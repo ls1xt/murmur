@@ -45,12 +45,12 @@ Plans:
   3. Dictating text containing curly quotes, em-dashes, or accented characters produces correct output (not garbled or missing characters)
   4. Starting the daemon without `ydotoold` running produces a clear error message immediately, not a silent failure later
   5. An expired or revoked AssemblyAI API key causes the daemon to stop retrying and surface an error, not loop forever
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 02-01: Implement WebSocket auto-reconnect with exponential backoff and error code classification
-- [ ] 02-02: Implement evdev key-state flush on device disconnect and ydotoold startup check
-- [ ] 02-03: Implement non-ASCII clipboard fallback in `YdotoolInjector`
+- [ ] 02-01-PLAN.md — Fatal error infrastructure, WebSocket error exits, and startup validation (RELY-01, RELY-02, RELY-05)
+- [ ] 02-02-PLAN.md — evdev device disconnect fatal exit (RELY-03)
+- [ ] 02-03-PLAN.md — Three injection strategies with clipboard fallback for non-ASCII (RELY-04)
 
 ### Phase 3: UX
 **Goal**: The daemon's state is visible and errors are impossible to miss
