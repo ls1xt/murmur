@@ -38,9 +38,7 @@ class TestFatal:
         assert "notify test" in args
 
     def test_handles_missing_notify_send(self, mocker: Any) -> None:
-        mocker.patch(
-            "murmur.errors.subprocess.run", side_effect=FileNotFoundError
-        )
+        mocker.patch("murmur.errors.subprocess.run", side_effect=FileNotFoundError)
         with pytest.raises(SystemExit, match="1"):
             fatal("no notify-send")
 
@@ -62,9 +60,7 @@ class TestFatalFromThread:
         mocker.patch("murmur.errors.subprocess.run")
         mock_kill = mocker.patch("murmur.errors.os.kill")
         fatal_from_thread("thread error")
-        mock_kill.assert_called_once_with(
-            mocker.ANY, signal.SIGTERM
-        )
+        mock_kill.assert_called_once_with(mocker.ANY, signal.SIGTERM)
 
     def test_prints_to_stderr(self, mocker: Any, capsys: Any) -> None:
         mocker.patch("murmur.errors.subprocess.run")
@@ -88,7 +84,10 @@ class TestStartupValidation:
     def test_exits_when_ydotoold_not_running(self, mocker: Any) -> None:
         from murmur.config import DictationConfig
 
-        mocker.patch("murmur.injector.ydotool.shutil.which", return_value="/usr/bin/ydotool")
+        mocker.patch(
+            "murmur.injector.ydotool.shutil.which",
+            return_value="/usr/bin/ydotool",
+        )
         mock_pgrep = mocker.patch("murmur.injector.ydotool.subprocess.run")
         mock_pgrep.return_value = MagicMock(returncode=1)  # ydotoold not running
 
@@ -110,10 +109,8 @@ class TestStartupValidation:
         mocker.patch("murmur.errors.subprocess.run")
         mocker.patch.dict("os.environ", {"ASSEMBLYAI_API_KEY": ""}, clear=False)
 
-        from murmur.main import main
-
-        # Ensure config returns no API key
         from murmur.config import DictationConfig
+        from murmur.main import main
 
         mock_config = DictationConfig()
         mock_config.transcriber.api_key = ""
