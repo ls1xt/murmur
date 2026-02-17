@@ -12,7 +12,7 @@ Murmur is a working prototype being hardened into a daily-driver voice dictation
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Package structure, typing, and test infrastructure
+- [x] **Phase 1: Foundation** - Package structure, typing, and test infrastructure
 - [ ] **Phase 2: Reliability** - Fix all known failure modes with verified test coverage
 - [ ] **Phase 3: UX** - System tray, desktop notifications, and error surfacing
 
@@ -31,9 +31,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Restructure flat files into murmur/ package with subpackages, create pyproject.toml and setup.sh
-- [ ] 01-02-PLAN.md — Achieve Pyright strict mode and Ruff compliance across all modules
-- [ ] 01-03-PLAN.md — Build pytest suite with mocked backends and hardware-gated integration tier
+- [x] 01-01-PLAN.md — Restructure flat files into murmur/ package with subpackages, create pyproject.toml and setup.sh
+- [x] 01-02-PLAN.md — Achieve Pyright strict mode and Ruff compliance across all modules
+- [x] 01-03-PLAN.md — Build pytest suite with mocked backends and hardware-gated integration tier
 
 ### Phase 2: Reliability
 **Goal**: Every known failure mode is handled, tested, and surfaced to the user
@@ -73,6 +73,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/3 | Not started | - |
+| 1. Foundation | 3/3 | Complete | 2026-02-17 |
 | 2. Reliability | 0/3 | Not started | - |
 | 3. UX | 0/2 | Not started | - |

@@ -9,12 +9,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Foundation
 
-- [ ] **FOUND-01**: Project restructured into `murmur/` package with `hotkey/`, `transcriber/`, `injector/`, `feedback/` subpackages
-- [ ] **FOUND-02**: `pyproject.toml` with dependencies, entry points (`python -m murmur`), and optional dependency groups
-- [ ] **FOUND-03**: All modules pass Pyright strict mode with zero errors
-- [ ] **FOUND-04**: pytest suite with unit tests using mocked backends (evdev, ydotool, AssemblyAI)
-- [ ] **FOUND-05**: Integration test tier gated behind `pytest.mark.hardware` for real device tests
-- [ ] **FOUND-06**: Ruff formatting and linting enforced across all modules
+- [x] **FOUND-01**: Project restructured into `murmur/` package with `hotkey/`, `transcriber/`, `injector/`, `feedback/` subpackages
+- [x] **FOUND-02**: `pyproject.toml` with dependencies, entry points (`python -m murmur`), and optional dependency groups
+- [x] **FOUND-03**: All modules pass Pyright strict mode with zero errors
+- [x] **FOUND-04**: pytest suite with unit tests using mocked backends (evdev, ydotool, AssemblyAI)
+- [x] **FOUND-05**: Integration test tier gated behind `pytest.mark.hardware` for real device tests
+- [x] **FOUND-06**: Ruff formatting and linting enforced across all modules
 
 ### Reliability
 
@@ -67,12 +67,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 1 | Pending |
-| FOUND-02 | Phase 1 | Pending |
-| FOUND-03 | Phase 1 | Pending |
-| FOUND-04 | Phase 1 | Pending |
-| FOUND-05 | Phase 1 | Pending |
-| FOUND-06 | Phase 1 | Pending |
+| FOUND-01 | Phase 1 | Done |
+| FOUND-02 | Phase 1 | Done |
+| FOUND-03 | Phase 1 | Done |
+| FOUND-04 | Phase 1 | Done |
+| FOUND-05 | Phase 1 | Done |
+| FOUND-06 | Phase 1 | Done |
 | RELY-01 | Phase 2 | Pending |
 | RELY-02 | Phase 2 | Pending |
 | RELY-03 | Phase 2 | Pending |

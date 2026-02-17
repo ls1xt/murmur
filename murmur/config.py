@@ -3,16 +3,18 @@ Configuration for the dictation tool.
 Loads from environment variables and/or a config file.
 """
 
-import os
+from __future__ import annotations
+
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-CONFIG_DIR = Path.home() / ".config" / "dictation"
+CONFIG_DIR = Path.home() / ".config" / "murmur"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 
@@ -20,57 +22,36 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 class HotkeyConfig:
     """Hotkey detection settings."""
 
-    # Keys that form the hotkey combo (modifier names + trigger key)
-    # For evdev: use evdev key names like "KEY_LEFTCTRL", "KEY_LEFTSHIFT", "KEY_SPACE"
-    # For pynput: use pynput names like "<ctrl>+<shift>+<space>"
     modifiers: list[str] = field(
         default_factory=lambda: ["KEY_LEFTCTRL", "KEY_LEFTSHIFT"]
     )
     trigger: str = "KEY_SPACE"
-
-    # "toggle" or "push_to_talk"
     mode: str = "push_to_talk"
-
-    # Backend: "evdev" (Wayland), "pynput" (macOS/X11), "auto"
     backend: str = "auto"
-
-    # For evdev: specific device path, or None for auto-detect
-    evdev_device: Optional[str] = None
+    evdev_device: str | None = None
 
 
 @dataclass
 class TranscriberConfig:
     """Speech-to-text engine settings."""
 
-    # Backend: "assemblyai" (more to come)
     backend: str = "assemblyai"
-
-    # AssemblyAI settings
     api_key: str = ""
     sample_rate: int = 16_000
     format_turns: bool = True
     language: str = "en"
-
-    # Endpointing tuning
     end_of_turn_confidence_threshold: float = 0.4
-    min_end_of_turn_silence_when_confident: int = 400  # ms
-    max_turn_silence: int = 1280  # ms
+    min_end_of_turn_silence_when_confident: int = 400
+    max_turn_silence: int = 1280
 
 
 @dataclass
 class InjectorConfig:
     """Text injection settings."""
 
-    # Backend: "ydotool", "dotool", "pynput", "auto"
     backend: str = "auto"
-
-    # ydotool settings
     ydotool_path: str = "ydotool"
-
-    # Whether to add a trailing space after injected text
     trailing_space: bool = True
-
-    # Delay between keystrokes in ms (ydotool --key-delay)
     key_delay: int = 0
 
 
@@ -78,13 +59,30 @@ class InjectorConfig:
 class FeedbackConfig:
     """User feedback settings."""
 
-    # Audio feedback
     audio_enabled: bool = True
-    start_sound: str = "start"  # built-in or path to .wav
+    start_sound: str = "start"
     stop_sound: str = "stop"
-
-    # Visual feedback (future: tray icon, notification)
     visual_enabled: bool = False
+
+
+def _apply_section(data: dict[str, Any], key: str, target: object) -> None:
+    """Apply a JSON dict section to a dataclass instance.
+
+    Uses setattr for JSON deserialization -- type safety is enforced
+    by the dataclass field types at runtime.
+    """
+    if key not in data:
+        return
+    section: Any = data[key]
+    if not isinstance(section, dict):
+        return
+    # section is dict[Unknown, Unknown] after isinstance narrowing of Any.
+    # Explicit Any cast bypasses strict-mode tracking of untyped JSON values.
+    raw_section: Any = section  # type: ignore[reportUnknownVariableType]
+    items: list[tuple[str, Any]] = list(raw_section.items())
+    for name, value in items:
+        if hasattr(target, name):
+            setattr(target, name, value)
 
 
 @dataclass
@@ -95,25 +93,22 @@ class DictationConfig:
     transcriber: TranscriberConfig = field(default_factory=TranscriberConfig)
     injector: InjectorConfig = field(default_factory=InjectorConfig)
     feedback: FeedbackConfig = field(default_factory=FeedbackConfig)
-
     log_level: str = "INFO"
 
     @classmethod
-    def load(cls) -> "DictationConfig":
+    def load(cls) -> DictationConfig:
         """Load config from file + environment overrides."""
         config = cls()
 
-        # Load from config file if it exists
         if CONFIG_FILE.exists():
             try:
                 with open(CONFIG_FILE) as f:
-                    data = json.load(f)
+                    data: dict[str, Any] = json.load(f)
                 config = cls._from_dict(data)
                 logger.info("Loaded config from %s", CONFIG_FILE)
             except Exception as e:
                 logger.warning("Failed to load config file: %s", e)
 
-        # Environment variable overrides (highest priority)
         if api_key := os.environ.get("ASSEMBLYAI_API_KEY"):
             config.transcriber.api_key = api_key
 
@@ -132,27 +127,19 @@ class DictationConfig:
         return config
 
     @classmethod
-    def _from_dict(cls, data: dict) -> "DictationConfig":
-        """Construct config from a dict (loaded from JSON)."""
+    def _from_dict(cls, data: dict[str, Any]) -> DictationConfig:
+        """Construct config from a dict (loaded from JSON).
+
+        Uses setattr for JSON deserialization -- type safety is enforced
+        by the dataclass field types at runtime.
+        """
         config = cls()
-        if "hotkey" in data:
-            for k, v in data["hotkey"].items():
-                if hasattr(config.hotkey, k):
-                    setattr(config.hotkey, k, v)
-        if "transcriber" in data:
-            for k, v in data["transcriber"].items():
-                if hasattr(config.transcriber, k):
-                    setattr(config.transcriber, k, v)
-        if "injector" in data:
-            for k, v in data["injector"].items():
-                if hasattr(config.injector, k):
-                    setattr(config.injector, k, v)
-        if "feedback" in data:
-            for k, v in data["feedback"].items():
-                if hasattr(config.feedback, k):
-                    setattr(config.feedback, k, v)
+        _apply_section(data, "hotkey", config.hotkey)
+        _apply_section(data, "transcriber", config.transcriber)
+        _apply_section(data, "injector", config.injector)
+        _apply_section(data, "feedback", config.feedback)
         if "log_level" in data:
-            config.log_level = data["log_level"]
+            config.log_level = str(data["log_level"])
         return config
 
     def save(self) -> None:

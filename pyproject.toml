@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "murmur"
+version = "0.1.0"
+description = "System-wide voice dictation for Linux/Wayland"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "assemblyai>=0.33.0",
+    "pyaudio>=0.2.14",
+    "evdev>=1.7.0; sys_platform == 'linux'",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.0",
+    "ruff>=0.9.0",
+    "pytest>=8.1.0",
+    "pytest-mock>=3.14.0",
+]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.10"
+venvPath = "."
+venv = ".venv"
+reportMissingModuleSource = "none"
+reportMissingTypeStubs = "none"
+reportPrivateUsage = "none"
+reportUntypedFunctionDecorator = "none"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "hardware: marks tests that require real hardware (evdev device, ydotoold daemon)",
+]

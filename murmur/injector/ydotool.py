@@ -1,19 +1,17 @@
 """
-ydotool-based text injector — works on Wayland and X11.
+ydotool-based text injector -- works on Wayland and X11.
 
 Uses the kernel uinput subsystem to simulate a virtual keyboard, bypassing
-Wayland's input restrictions. Requires:
-  - ydotool installed
-  - ydotoold daemon running
-  - User in the 'input' group
+Wayland's input restrictions.
 """
+
+from __future__ import annotations
 
 import logging
 import shutil
 import subprocess
-from typing import Optional
 
-from .base import TextInjector
+from murmur.injector.base import TextInjector
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +24,11 @@ class YdotoolInjector(TextInjector):
         ydotool_path: str = "ydotool",
         key_delay: int = 0,
         trailing_space: bool = True,
-    ):
+    ) -> None:
         self._ydotool_path = ydotool_path
         self._key_delay = key_delay
         self._trailing_space = trailing_space
-
-        # Verify ydotool is available
-        self._resolved_path: Optional[str] = shutil.which(self._ydotool_path)
+        self._resolved_path: str | None = shutil.which(self._ydotool_path)
         if not self._resolved_path:
             logger.warning("ydotool not found in PATH")
 
@@ -41,7 +37,6 @@ class YdotoolInjector(TextInjector):
         if not self._resolved_path:
             return False
 
-        # Check if ydotoold is running
         try:
             result = subprocess.run(
                 ["pgrep", "-x", "ydotoold"],
@@ -56,7 +51,6 @@ class YdotoolInjector(TextInjector):
                 )
                 return False
         except (subprocess.TimeoutExpired, FileNotFoundError):
-            # pgrep not available; try a test type instead
             pass
 
         return True
