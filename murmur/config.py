@@ -66,6 +66,20 @@ class FeedbackConfig:
     visual_enabled: bool = False
 
 
+@dataclass
+class NotifyConfig:
+    """Desktop notification settings."""
+
+    level: str = "errors"  # "off", "errors", "verbose"
+
+
+@dataclass
+class TrayConfig:
+    """System tray icon settings."""
+
+    enabled: bool = True
+
+
 def _apply_section(data: dict[str, Any], key: str, target: object) -> None:
     """Apply a JSON dict section to a dataclass instance.
 
@@ -94,6 +108,8 @@ class DictationConfig:
     transcriber: TranscriberConfig = field(default_factory=TranscriberConfig)
     injector: InjectorConfig = field(default_factory=InjectorConfig)
     feedback: FeedbackConfig = field(default_factory=FeedbackConfig)
+    notify: NotifyConfig = field(default_factory=NotifyConfig)
+    tray: TrayConfig = field(default_factory=TrayConfig)
     log_level: str = "INFO"
 
     @classmethod
@@ -128,6 +144,9 @@ class DictationConfig:
         if strategy := os.environ.get("MURMUR_INJECT_STRATEGY"):
             config.injector.inject_strategy = strategy
 
+        if notify_level := os.environ.get("MURMUR_NOTIFY_LEVEL"):
+            config.notify.level = notify_level
+
         return config
 
     @classmethod
@@ -142,6 +161,8 @@ class DictationConfig:
         _apply_section(data, "transcriber", config.transcriber)
         _apply_section(data, "injector", config.injector)
         _apply_section(data, "feedback", config.feedback)
+        _apply_section(data, "notify", config.notify)
+        _apply_section(data, "tray", config.tray)
         if "log_level" in data:
             config.log_level = str(data["log_level"])
         return config
