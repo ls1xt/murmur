@@ -28,12 +28,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `ruff check` and `ruff format --check` pass with zero violations
   4. `pytest` runs the unit test suite with mocked backends (no hardware required) and all tests pass
   5. `pip install -e .` succeeds from a clean venv using `pyproject.toml`
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 01-01: Restructure flat files into `murmur/` package with subpackages
-- [ ] 01-02: Write `pyproject.toml`, achieve Pyright strict compliance, configure Ruff
-- [ ] 01-03: Build pytest suite with mocked backends and hardware-gated integration tier
+- [ ] 01-01-PLAN.md — Restructure flat files into murmur/ package with subpackages, create pyproject.toml and setup.sh
+- [ ] 01-02-PLAN.md — Achieve Pyright strict mode and Ruff compliance across all modules
+- [ ] 01-03-PLAN.md — Build pytest suite with mocked backends and hardware-gated integration tier
 
 ### Phase 2: Reliability
 **Goal**: Every known failure mode is handled, tested, and surfaced to the user
