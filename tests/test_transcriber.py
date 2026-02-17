@@ -186,6 +186,105 @@ class TestAssemblyAITranscriber:
         on_final.assert_called_once_with("hello world")
 
 
+class TestAssemblyAIErrorHandling:
+    """Test AssemblyAI transcriber fatal error exits."""
+
+    def _mock_v3(self, mocker: Any) -> MagicMock:
+        """Patch the _v3 module reference and threading to use mocks."""
+        mock_v3 = MagicMock()
+        mock_client = MagicMock()
+        mock_v3.StreamingClient.return_value = mock_client
+        mock_v3.StreamingClientOptions.return_value = MagicMock()
+        mock_v3.StreamingParameters.return_value = MagicMock()
+        mock_v3.StreamingEvents = MagicMock()
+        mocker.patch("murmur.transcriber.assemblyai._v3", mock_v3)
+        mock_thread = MagicMock()
+        mocker.patch(
+            "murmur.transcriber.assemblyai.threading.Thread",
+            return_value=mock_thread,
+        )
+        return mock_v3
+
+    def test_stream_error_calls_fatal(self, mocker: Any) -> None:
+        from murmur.transcriber.assemblyai import AssemblyAITranscriber
+
+        self._mock_v3(mocker)
+        mock_fatal = mocker.patch("murmur.transcriber.assemblyai.fatal_from_thread")
+
+        config = TranscriberConfig(api_key="test_key")
+        transcriber = AssemblyAITranscriber(config)
+        transcriber._on_stream_error(MagicMock(), "some error")
+
+        mock_fatal.assert_called_once()
+        call_msg: str = mock_fatal.call_args[0][0]
+        assert "WebSocket error" in call_msg
+
+    def test_stream_error_classifies_1008(self, mocker: Any) -> None:
+        from murmur.transcriber.assemblyai import AssemblyAITranscriber
+
+        self._mock_v3(mocker)
+        mock_fatal = mocker.patch("murmur.transcriber.assemblyai.fatal_from_thread")
+
+        config = TranscriberConfig(api_key="test_key")
+        transcriber = AssemblyAITranscriber(config)
+        transcriber._on_stream_error(MagicMock(), "Connection closed: 1008")
+
+        mock_fatal.assert_called_once()
+        call_msg: str = mock_fatal.call_args[0][0]
+        assert "auth error" in call_msg
+        assert "1008" in call_msg
+
+    def test_stream_error_classifies_3005(self, mocker: Any) -> None:
+        from murmur.transcriber.assemblyai import AssemblyAITranscriber
+
+        self._mock_v3(mocker)
+        mock_fatal = mocker.patch("murmur.transcriber.assemblyai.fatal_from_thread")
+
+        config = TranscriberConfig(api_key="test_key")
+        transcriber = AssemblyAITranscriber(config)
+        transcriber._on_stream_error(MagicMock(), "Session error: 3005")
+
+        mock_fatal.assert_called_once()
+        call_msg: str = mock_fatal.call_args[0][0]
+        assert "session expired" in call_msg
+        assert "3005" in call_msg
+
+    def test_unexpected_termination_calls_fatal(self, mocker: Any) -> None:
+        from murmur.transcriber.assemblyai import AssemblyAITranscriber
+
+        self._mock_v3(mocker)
+        mock_fatal = mocker.patch("murmur.transcriber.assemblyai.fatal_from_thread")
+
+        config = TranscriberConfig(api_key="test_key")
+        transcriber = AssemblyAITranscriber(config)
+        transcriber.start()
+        # is_streaming is True -- unexpected termination
+        mock_event = MagicMock()
+        mock_event.audio_duration_seconds = 5.0
+        transcriber._on_terminated(MagicMock(), mock_event)
+
+        mock_fatal.assert_called_once()
+        call_msg: str = mock_fatal.call_args[0][0]
+        assert "connection lost" in call_msg.lower()
+
+    def test_normal_termination_does_not_call_fatal(self, mocker: Any) -> None:
+        from murmur.transcriber.assemblyai import AssemblyAITranscriber
+
+        self._mock_v3(mocker)
+        mock_fatal = mocker.patch("murmur.transcriber.assemblyai.fatal_from_thread")
+
+        config = TranscriberConfig(api_key="test_key")
+        transcriber = AssemblyAITranscriber(config)
+        transcriber.start()
+        transcriber.stop()
+        # is_streaming is now False -- normal termination
+        mock_event = MagicMock()
+        mock_event.audio_duration_seconds = 5.0
+        transcriber._on_terminated(MagicMock(), mock_event)
+
+        mock_fatal.assert_not_called()
+
+
 class TestTranscriberFactory:
     """Test the transcriber factory function."""
 

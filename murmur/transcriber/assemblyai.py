@@ -16,6 +16,7 @@ from typing import Any
 import assemblyai as aai  # type: ignore[import-untyped]
 
 from murmur.config import TranscriberConfig
+from murmur.errors import fatal_from_thread
 from murmur.transcriber.base import Transcriber
 
 logger = logging.getLogger(__name__)
@@ -155,15 +156,31 @@ class AssemblyAITranscriber(Transcriber):
                 self._on_final(transcript)
 
     def _on_terminated(self, client: Any, event: Any) -> None:
-        """Handle streaming session termination event."""
+        """Handle streaming session termination event.
+
+        Normal termination (after stop()) logs and returns.
+        Unexpected termination (while still streaming) exits the daemon.
+        """
         duration: float = float(event.audio_duration_seconds)
         logger.info("Session terminated: %.1fs audio processed", duration)
 
+        if self._is_streaming:
+            # Unexpected termination -- we didn't call stop()
+            fatal_from_thread("WebSocket connection lost unexpectedly")
+
     def _on_stream_error(self, client: Any, error: Any) -> None:
-        """Handle streaming error event."""
-        logger.error("AssemblyAI streaming error: %s", error)
-        if self._on_error:
-            err: Exception = (
-                error if isinstance(error, Exception) else Exception(str(error))
+        """Handle streaming error -- exit immediately per user decision."""
+        error_str = str(error)
+
+        # Classify error codes for user-friendly messages
+        if "1008" in error_str:
+            message = (
+                "AssemblyAI auth error (code 1008): "
+                "check your API key and account balance"
             )
-            self._on_error(err)
+        elif "3005" in error_str:
+            message = "AssemblyAI session expired (code 3005)"
+        else:
+            message = f"WebSocket error: {error_str}"
+
+        fatal_from_thread(message)
