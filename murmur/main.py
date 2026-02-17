@@ -17,6 +17,7 @@ from murmur.config import DictationConfig
 from murmur.errors import fatal
 from murmur.feedback.audio import AudioFeedback
 from murmur.feedback.notify import Notifier
+from murmur.feedback.tray import TrayIcon
 from murmur.hotkey import create_hotkey_listener
 from murmur.hotkey.base import HotkeyListener
 from murmur.injector import create_injector
@@ -48,6 +49,7 @@ class DictationApp:
         self.injector: TextInjector = create_injector(config.injector)
         self.feedback = AudioFeedback(enabled=config.feedback.audio_enabled)
         self.notifier = Notifier(level=config.notify.level)
+        self.tray = TrayIcon(on_quit=self._request_shutdown)
 
         self.hotkey.set_callbacks(
             on_activate=self._on_activate,
@@ -64,6 +66,7 @@ class DictationApp:
         logger.info("Recording started")
         self.feedback.play_start()
         self.notifier.info("Recording started")
+        self.tray.set_state("recording")
         threading.Thread(target=self.transcriber.start, daemon=True).start()
 
     def _on_deactivate(self) -> None:
@@ -71,6 +74,7 @@ class DictationApp:
         logger.info("Recording stopped")
         self.feedback.play_stop()
         self.notifier.info("Recording stopped")
+        self.tray.set_state("idle")
         threading.Thread(target=self.transcriber.stop, daemon=True).start()
 
     def _on_partial_transcript(self, text: str) -> None:
@@ -92,6 +96,7 @@ class DictationApp:
         """Called when the transcriber encounters an error."""
         logger.error("Transcription error: %s", error)
         self.notifier.error(str(error))
+        self.tray.set_state("error", reason=str(error))
 
     def run(self) -> None:
         """Start the dictation app. Blocks until interrupted."""
@@ -121,6 +126,9 @@ class DictationApp:
 
         self.notifier.info("Murmur started")
 
+        if self.config.tray.enabled:
+            self.tray.start()
+
         self.hotkey.start()
 
         def _signal_handler(signum: int, frame: types.FrameType | None) -> None:
@@ -141,6 +149,8 @@ class DictationApp:
         """Clean up all resources."""
         self._running = False
         logger.info("Shutting down...")
+
+        self.tray.stop()
 
         if self.transcriber.is_streaming:
             self.transcriber.stop()

@@ -90,9 +90,7 @@ class TrayIcon:
                 title="Murmur - Idle",
                 menu=menu,
             )
-            self._thread = threading.Thread(
-                target=self._icon.run, daemon=True
-            )
+            self._thread = threading.Thread(target=self._icon.run, daemon=True)
             self._thread.start()
             self._available = True
             logger.info("Tray icon started")

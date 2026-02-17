@@ -14,12 +14,14 @@ class TestTrayIconGracefulDegradation:
     def test_start_graceful_on_import_error(self, _mock: object) -> None:
         """If pystray import fails, tray stays unavailable without crash."""
         tray = TrayIcon()
-        with patch.dict("sys.modules", {"pystray": None}):
-            with patch(
+        with (
+            patch.dict("sys.modules", {"pystray": None}),
+            patch(
                 "builtins.__import__",
                 side_effect=ImportError("no pystray"),
-            ):
-                tray.start()
+            ),
+        ):
+            tray.start()
         assert not tray.available
 
     def test_set_state_noop_when_unavailable(self) -> None:
