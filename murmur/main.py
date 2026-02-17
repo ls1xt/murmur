@@ -63,6 +63,9 @@ class DictationApp:
 
     def _on_activate(self) -> None:
         """Called when the hotkey is activated (start recording)."""
+        with self._lock:
+            if self.transcriber.is_streaming:
+                return  # already recording
         logger.info("Recording started")
         self.feedback.play_start()
         self.notifier.info("Recording started")
@@ -71,6 +74,9 @@ class DictationApp:
 
     def _on_deactivate(self) -> None:
         """Called when the hotkey is deactivated (stop recording)."""
+        with self._lock:
+            if not self.transcriber.is_streaming:
+                return  # already stopped
         logger.info("Recording stopped")
         self.feedback.play_stop()
         self.notifier.info("Recording stopped")

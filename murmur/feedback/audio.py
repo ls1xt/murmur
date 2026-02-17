@@ -68,15 +68,19 @@ class AudioFeedback:
 
         try:
             pa: Any = _pyaudio.PyAudio()
-            stream: Any = pa.open(
-                format=_pyaudio.paInt16,
-                channels=1,
-                rate=sample_rate,
-                output=True,
-            )
-            stream.write(samples)
-            stream.stop_stream()
-            stream.close()
-            pa.terminate()
+            try:
+                stream: Any = pa.open(
+                    format=_pyaudio.paInt16,
+                    channels=1,
+                    rate=sample_rate,
+                    output=True,
+                )
+                try:
+                    stream.write(samples)
+                finally:
+                    stream.stop_stream()
+                    stream.close()
+            finally:
+                pa.terminate()
         except Exception as e:
             logger.debug("Audio feedback error: %s", e)

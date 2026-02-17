@@ -58,8 +58,11 @@ class YdotoolInjector(TextInjector):
                     "  # or: ydotoold &"
                 )
                 return False
-        except (subprocess.TimeoutExpired, FileNotFoundError):
+        except subprocess.TimeoutExpired:
             pass
+        except FileNotFoundError:
+            logger.warning("pgrep not found; cannot verify ydotoold is running")
+            return False
 
         # Check wl-copy if clipboard strategy is needed
         if (
