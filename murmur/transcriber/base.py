@@ -1,5 +1,6 @@
 """Abstract base class for speech-to-text transcribers."""
 
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
@@ -8,10 +9,21 @@ class Transcriber(ABC):
     """Base class for streaming speech-to-text backends."""
 
     def __init__(self) -> None:
-        self._is_streaming = False
+        self._streaming_lock = threading.Lock()
+        self._streaming: bool = False
         self._on_partial: Callable[[str], None] | None = None
         self._on_final: Callable[[str], None] | None = None
         self._on_error: Callable[[Exception], None] | None = None
+
+    @property
+    def _is_streaming(self) -> bool:
+        with self._streaming_lock:
+            return self._streaming
+
+    @_is_streaming.setter
+    def _is_streaming(self, value: bool) -> None:
+        with self._streaming_lock:
+            self._streaming = value
 
     def set_callbacks(
         self,

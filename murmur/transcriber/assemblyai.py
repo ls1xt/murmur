@@ -91,8 +91,10 @@ class AssemblyAITranscriber(Transcriber):
             if client is not None:
                 client.stream(mic)
         except Exception as e:
-            if self._is_streaming and self._on_error is not None:
-                self._on_error(e)
+            if self._is_streaming:
+                logger.error("Audio stream error: %s", e)
+                if self._on_error is not None:
+                    self._on_error(e)
 
     def stop(self) -> None:
         """Stop streaming and disconnect."""
