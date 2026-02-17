@@ -16,6 +16,7 @@ import types
 from murmur.config import DictationConfig
 from murmur.errors import fatal
 from murmur.feedback.audio import AudioFeedback
+from murmur.feedback.notify import Notifier
 from murmur.hotkey import create_hotkey_listener
 from murmur.hotkey.base import HotkeyListener
 from murmur.injector import create_injector
@@ -40,11 +41,13 @@ class DictationApp:
         self.config = config
         self._running = False
         self._lock = threading.Lock()
+        self._stop_event = threading.Event()
 
         self.hotkey: HotkeyListener = create_hotkey_listener(config.hotkey)
         self.transcriber: Transcriber = create_transcriber(config.transcriber)
         self.injector: TextInjector = create_injector(config.injector)
         self.feedback = AudioFeedback(enabled=config.feedback.audio_enabled)
+        self.notifier = Notifier(level=config.notify.level)
 
         self.hotkey.set_callbacks(
             on_activate=self._on_activate,
@@ -60,12 +63,14 @@ class DictationApp:
         """Called when the hotkey is activated (start recording)."""
         logger.info("Recording started")
         self.feedback.play_start()
+        self.notifier.info("Recording started")
         threading.Thread(target=self.transcriber.start, daemon=True).start()
 
     def _on_deactivate(self) -> None:
         """Called when the hotkey is deactivated (stop recording)."""
         logger.info("Recording stopped")
         self.feedback.play_stop()
+        self.notifier.info("Recording stopped")
         threading.Thread(target=self.transcriber.stop, daemon=True).start()
 
     def _on_partial_transcript(self, text: str) -> None:
@@ -86,6 +91,7 @@ class DictationApp:
     def _on_transcriber_error(self, error: Exception) -> None:
         """Called when the transcriber encounters an error."""
         logger.error("Transcription error: %s", error)
+        self.notifier.error(str(error))
 
     def run(self) -> None:
         """Start the dictation app. Blocks until interrupted."""
@@ -113,19 +119,23 @@ class DictationApp:
             print(f"  Press {trigger_desc} to start/stop dictation.")
         print("  Press Ctrl+C to quit.\n")
 
-        self.hotkey.start()
+        self.notifier.info("Murmur started")
 
-        stop_event = threading.Event()
+        self.hotkey.start()
 
         def _signal_handler(signum: int, frame: types.FrameType | None) -> None:
             print("\nShutting down...")
-            stop_event.set()
+            self._stop_event.set()
 
         signal.signal(signal.SIGINT, _signal_handler)
         signal.signal(signal.SIGTERM, _signal_handler)
 
-        stop_event.wait()
+        self._stop_event.wait()
         self.shutdown()
+
+    def _request_shutdown(self) -> None:
+        """Request daemon shutdown (e.g., from tray Quit menu)."""
+        self._stop_event.set()
 
     def shutdown(self) -> None:
         """Clean up all resources."""
@@ -148,12 +158,21 @@ def main() -> None:
         default=None,
         help="Text injection strategy (default: clipboard-fallback)",
     )
+    parser.add_argument(
+        "--notify",
+        choices=["off", "errors", "verbose"],
+        default=None,
+        help="Notification verbosity (default: errors)",
+    )
     args = parser.parse_args()
 
     config = DictationConfig.load()
 
     if args.inject is not None:
         config.injector.inject_strategy = args.inject
+
+    if args.notify is not None:
+        config.notify.level = args.notify
 
     logging.basicConfig(
         level=getattr(logging, config.log_level.upper(), logging.INFO),
