@@ -7,6 +7,7 @@ to provide push-to-talk (or toggle) dictation into any application.
 
 from __future__ import annotations
 
+import argparse
 import logging
 import signal
 import threading
@@ -140,7 +141,19 @@ class DictationApp:
 
 def main() -> None:
     """Entry point for the dictation daemon."""
+    parser = argparse.ArgumentParser(description="Murmur voice dictation daemon")
+    parser.add_argument(
+        "--inject",
+        choices=["ydotool", "clipboard-fallback", "clipboard"],
+        default=None,
+        help="Text injection strategy (default: clipboard-fallback)",
+    )
+    args = parser.parse_args()
+
     config = DictationConfig.load()
+
+    if args.inject is not None:
+        config.injector.inject_strategy = args.inject
 
     logging.basicConfig(
         level=getattr(logging, config.log_level.upper(), logging.INFO),
@@ -149,7 +162,10 @@ def main() -> None:
     )
 
     if not config.transcriber.api_key:
-        fatal("ASSEMBLYAI_API_KEY not set. Get a key at: https://www.assemblyai.com/")
+        fatal(
+            "ASSEMBLYAI_API_KEY not set. "
+            "Get a key at: https://www.assemblyai.com/"
+        )
 
     app = DictationApp(config)
     app.run()

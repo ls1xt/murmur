@@ -40,6 +40,7 @@ class TestDefaultValues:
         assert config.backend == "auto"
         assert config.trailing_space is True
         assert config.key_delay == 0
+        assert config.inject_strategy == "clipboard-fallback"
 
     def test_feedback_defaults(self) -> None:
         config = FeedbackConfig()
@@ -71,6 +72,7 @@ class TestEnvVarOverride:
         monkeypatch.delenv("DICTATION_HOTKEY_MODE", raising=False)
         monkeypatch.delenv("DICTATION_HOTKEY_BACKEND", raising=False)
         monkeypatch.delenv("DICTATION_INJECTOR_BACKEND", raising=False)
+        monkeypatch.delenv("MURMUR_INJECT_STRATEGY", raising=False)
         config = DictationConfig.load()
         assert config.transcriber.api_key == "test_key_abc"
 
@@ -80,6 +82,7 @@ class TestEnvVarOverride:
         monkeypatch.delenv("DICTATION_LOG_LEVEL", raising=False)
         monkeypatch.delenv("DICTATION_HOTKEY_BACKEND", raising=False)
         monkeypatch.delenv("DICTATION_INJECTOR_BACKEND", raising=False)
+        monkeypatch.delenv("MURMUR_INJECT_STRATEGY", raising=False)
         config = DictationConfig.load()
         assert config.hotkey.mode == "toggle"
 
@@ -89,8 +92,21 @@ class TestEnvVarOverride:
         monkeypatch.delenv("DICTATION_HOTKEY_MODE", raising=False)
         monkeypatch.delenv("DICTATION_HOTKEY_BACKEND", raising=False)
         monkeypatch.delenv("DICTATION_INJECTOR_BACKEND", raising=False)
+        monkeypatch.delenv("MURMUR_INJECT_STRATEGY", raising=False)
         config = DictationConfig.load()
         assert config.log_level == "DEBUG"
+
+    def test_inject_strategy_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MURMUR_INJECT_STRATEGY", "clipboard")
+        monkeypatch.delenv("ASSEMBLYAI_API_KEY", raising=False)
+        monkeypatch.delenv("DICTATION_LOG_LEVEL", raising=False)
+        monkeypatch.delenv("DICTATION_HOTKEY_MODE", raising=False)
+        monkeypatch.delenv("DICTATION_HOTKEY_BACKEND", raising=False)
+        monkeypatch.delenv("DICTATION_INJECTOR_BACKEND", raising=False)
+        config = DictationConfig.load()
+        assert config.injector.inject_strategy == "clipboard"
 
 
 class TestFromDict:

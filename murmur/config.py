@@ -53,6 +53,7 @@ class InjectorConfig:
     ydotool_path: str = "ydotool"
     trailing_space: bool = True
     key_delay: int = 0
+    inject_strategy: str = "clipboard-fallback"
 
 
 @dataclass
@@ -123,6 +124,9 @@ class DictationConfig:
 
         if backend := os.environ.get("DICTATION_INJECTOR_BACKEND"):
             config.injector.backend = backend
+
+        if strategy := os.environ.get("MURMUR_INJECT_STRATEGY"):
+            config.injector.inject_strategy = strategy
 
         return config
 
