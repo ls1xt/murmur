@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import logging
 import signal
-import sys
 import threading
 import types
 
 from murmur.config import DictationConfig
+from murmur.errors import fatal
 from murmur.feedback.audio import AudioFeedback
 from murmur.hotkey import create_hotkey_listener
 from murmur.hotkey.base import HotkeyListener
@@ -91,11 +91,10 @@ class DictationApp:
         self._running = True
 
         if not self.injector.is_available():
-            logger.error(
-                "Text injector backend is not available. "
-                "See setup instructions in the README."
+            fatal(
+                "ydotoold is not running. Start it with: "
+                "systemctl --user start ydotool"
             )
-            sys.exit(1)
 
         mode = self.config.hotkey.mode
         trigger_desc = (
@@ -151,10 +150,10 @@ def main() -> None:
     )
 
     if not config.transcriber.api_key:
-        print("Error: ASSEMBLYAI_API_KEY environment variable is required.")
-        print("  export ASSEMBLYAI_API_KEY=your_key_here")
-        print("  Get a free key at: https://www.assemblyai.com/")
-        sys.exit(1)
+        fatal(
+            "ASSEMBLYAI_API_KEY not set. "
+            "Get a key at: https://www.assemblyai.com/"
+        )
 
     app = DictationApp(config)
     app.run()
