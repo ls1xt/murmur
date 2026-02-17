@@ -96,9 +96,7 @@ class TestEnvVarOverride:
         config = DictationConfig.load()
         assert config.log_level == "DEBUG"
 
-    def test_inject_strategy_from_env(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_inject_strategy_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("MURMUR_INJECT_STRATEGY", "clipboard")
         monkeypatch.delenv("ASSEMBLYAI_API_KEY", raising=False)
         monkeypatch.delenv("DICTATION_LOG_LEVEL", raising=False)

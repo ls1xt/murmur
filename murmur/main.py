@@ -162,10 +162,7 @@ def main() -> None:
     )
 
     if not config.transcriber.api_key:
-        fatal(
-            "ASSEMBLYAI_API_KEY not set. "
-            "Get a key at: https://www.assemblyai.com/"
-        )
+        fatal("ASSEMBLYAI_API_KEY not set. Get a key at: https://www.assemblyai.com/")
 
     app = DictationApp(config)
     app.run()

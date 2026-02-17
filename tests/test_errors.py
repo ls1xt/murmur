@@ -108,6 +108,7 @@ class TestStartupValidation:
     def test_exits_when_api_key_missing(self, mocker: Any) -> None:
         mocker.patch("murmur.errors.subprocess.run")
         mocker.patch.dict("os.environ", {"ASSEMBLYAI_API_KEY": ""}, clear=False)
+        mocker.patch("sys.argv", ["murmur"])
 
         from murmur.config import DictationConfig
         from murmur.main import main

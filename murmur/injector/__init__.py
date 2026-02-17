@@ -18,6 +18,7 @@ def create_injector(config: InjectorConfig) -> TextInjector:
                 ydotool_path=config.ydotool_path,
                 key_delay=config.key_delay,
                 trailing_space=config.trailing_space,
+                inject_strategy=config.inject_strategy,
             )
         case "auto":
             if sys.platform == "linux":
@@ -27,6 +28,7 @@ def create_injector(config: InjectorConfig) -> TextInjector:
                     ydotool_path=config.ydotool_path,
                     key_delay=config.key_delay,
                     trailing_space=config.trailing_space,
+                    inject_strategy=config.inject_strategy,
                 )
             raise RuntimeError(f"No injector backend available for {sys.platform}")
         case _:

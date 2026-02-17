@@ -157,9 +157,7 @@ class EvdevHotkeyListener(HotkeyListener):
                                 self._handle_key_event(event)
                     except OSError:
                         dev_path: str = str(device.path)  # type: ignore[reportUnknownMemberType]
-                        fatal_from_thread(
-                            f"Input device disconnected: {dev_path}"
-                        )
+                        fatal_from_thread(f"Input device disconnected: {dev_path}")
         finally:
             selector.close()
 
