@@ -207,6 +207,48 @@ class TestEvdevHotkeyListener:
         assert result == ["/dev/input/event0"]
         mock_dev.close.assert_called_once()
 
+    def test_device_disconnect_calls_fatal(self, mocker: Any) -> None:
+        from selectors import EVENT_READ
+
+        from murmur.hotkey.evdev import EvdevHotkeyListener
+
+        listener = EvdevHotkeyListener(
+            modifiers=["KEY_LEFTCTRL"],
+            trigger="KEY_SPACE",
+            mode="push_to_talk",
+        )
+
+        # Make fatal_from_thread set the stop event so loop exits
+        def mock_fatal_fn(msg: str) -> None:
+            listener._stop_event.set()
+
+        mock_fatal = mocker.patch(
+            "murmur.hotkey.evdev.fatal_from_thread",
+            side_effect=mock_fatal_fn,
+        )
+
+        # Create a mock device that raises OSError on read
+        mock_dev = MagicMock()
+        mock_dev.path = "/dev/input/event0"
+        mock_dev.read.side_effect = OSError("No such device")
+
+        # Patch selectors.DefaultSelector at its source
+        mock_selector = MagicMock()
+        mock_key = MagicMock()
+        mock_key.fileobj = mock_dev
+        mock_selector.select.return_value = [(mock_key, EVENT_READ)]
+        mocker.patch("selectors.DefaultSelector", return_value=mock_selector)
+
+        listener._devices = [mock_dev]
+        listener._stop_event.clear()
+
+        listener._listen_loop()
+
+        mock_fatal.assert_called_once()
+        call_msg: str = mock_fatal.call_args[0][0]
+        assert "Input device disconnected" in call_msg
+        assert "/dev/input/event0" in call_msg
+
     @pytest.mark.hardware()
     def test_real_keyboard_detection(self) -> None:
         """Integration test: detect real keyboard (requires hardware)."""

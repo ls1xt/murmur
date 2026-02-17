@@ -15,6 +15,7 @@ from typing import Any
 import evdev  # type: ignore[import-untyped]
 from evdev import categorize, ecodes  # type: ignore[import-untyped]
 
+from murmur.errors import fatal_from_thread
 from murmur.hotkey.base import HotkeyListener
 
 logger = logging.getLogger(__name__)
@@ -156,8 +157,9 @@ class EvdevHotkeyListener(HotkeyListener):
                                 self._handle_key_event(event)
                     except OSError:
                         dev_path: str = str(device.path)  # type: ignore[reportUnknownMemberType]
-                        logger.warning("Device disconnected: %s", dev_path)
-                        selector.unregister(device)
+                        fatal_from_thread(
+                            f"Input device disconnected: {dev_path}"
+                        )
         finally:
             selector.close()
 
