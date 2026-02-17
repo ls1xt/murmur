@@ -13,6 +13,8 @@ dependencies = [
     "assemblyai>=0.33.0",
     "pyaudio>=0.2.14",
     "evdev>=1.7.0; sys_platform == 'linux'",
+    "pystray>=0.19.5",
+    "Pillow>=10.0.0",
 ]
 
 [dependency-groups]
