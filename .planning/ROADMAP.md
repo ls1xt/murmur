@@ -13,7 +13,7 @@ Murmur is a working prototype being hardened into a daily-driver voice dictation
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Package structure, typing, and test infrastructure
-- [ ] **Phase 2: Reliability** - Fix all known failure modes with verified test coverage
+- [x] **Phase 2: Reliability** - Fix all known failure modes with verified test coverage
 - [ ] **Phase 3: UX** - System tray, desktop notifications, and error surfacing
 
 ## Phase Details
@@ -48,9 +48,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Fatal error infrastructure, WebSocket error exits, and startup validation (RELY-01, RELY-02, RELY-05)
-- [ ] 02-02-PLAN.md — evdev device disconnect fatal exit (RELY-03)
-- [ ] 02-03-PLAN.md — Three injection strategies with clipboard fallback for non-ASCII (RELY-04)
+- [x] 02-01-PLAN.md — Fatal error infrastructure, WebSocket error exits, and startup validation (RELY-01, RELY-02, RELY-05)
+- [x] 02-02-PLAN.md — evdev device disconnect fatal exit (RELY-03)
+- [x] 02-03-PLAN.md — Three injection strategies with clipboard fallback for non-ASCII (RELY-04)
 
 ### Phase 3: UX
 **Goal**: The daemon's state is visible and errors are impossible to miss
@@ -60,11 +60,11 @@ Plans:
   1. A tray icon changes appearance when recording starts and stops, visible in the system tray
   2. When the daemon starts without `ydotoold` running, a desktop notification appears within 2 seconds
   3. The tray icon's absence (e.g., stock GNOME without AppIndicator) does not prevent the daemon from starting or delivering notifications
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 03-01: Implement system tray icon with idle/recording/error states and graceful-fail
-- [ ] 03-02: Implement desktop notifications via D-Bus with notify-send fallback
+- [ ] 03-01-PLAN.md — Configurable desktop notifications via notify-send with --notify CLI flag
+- [ ] 03-02-PLAN.md — System tray icon with idle/recording/error states and graceful degradation
 
 ## Progress
 
@@ -74,5 +74,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | 2026-02-17 |
-| 2. Reliability | 0/3 | Not started | - |
+| 2. Reliability | 3/3 | Complete | 2026-02-17 |
 | 3. UX | 0/2 | Not started | - |
