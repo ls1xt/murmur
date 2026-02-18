@@ -15,6 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation** - Package structure, typing, and test infrastructure
 - [x] **Phase 2: Reliability** - Fix all known failure modes with verified test coverage
 - [ ] **Phase 3: UX** - System tray, desktop notifications, and error surfacing
+- [ ] **Phase 4: Interaction Polish** - Hotkey suppression, live injection, audio feedback, toggle mode, Sway tray
 
 ## Phase Details
 
@@ -76,3 +77,18 @@ Phases execute in numeric order: 1 → 2 → 3
 | 1. Foundation | 3/3 | Complete | 2026-02-17 |
 | 2. Reliability | 3/3 | Complete | 2026-02-17 |
 | 3. UX | 0/2 | Not started | - |
+| 4. Interaction Polish | 0/? | Not started | - |
+
+### Phase 4: Interaction Polish
+**Goal**: Dictation feels responsive and polished — keys don't leak, text appears live, audio confirms state, and the tray works on Sway
+**Depends on**: Phase 3
+**Success Criteria** (what must be TRUE):
+  1. Holding the hotkey does not insert spurious characters (e.g. spaces) into the focused application
+  2. Partial transcripts appear in the focused window while still speaking, not only after releasing the hotkey
+  3. Audible beeps play on recording start and stop (PyAudio output works under PipeWire/Sway)
+  4. A toggle mode exists: one keypress starts recording, a second keypress stops it
+  5. A tray indicator is visible in swaybar (or waybar) showing idle/recording/error state
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 4 to break down)

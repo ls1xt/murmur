@@ -58,6 +58,10 @@ Recent decisions affecting current work:
 
 None.
 
+### Roadmap Evolution
+
+- Phase 4 added: Interaction polish — hotkey passthrough suppression, live partial injection, audio feedback, toggle mode, and Sway tray support
+
 ### Blockers/Concerns
 
 None.
