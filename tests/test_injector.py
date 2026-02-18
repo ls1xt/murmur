@@ -283,6 +283,136 @@ class TestClipboardFallbackStrategy:
         assert "wl-copy" in wl_copy_args[0]
 
 
+class TestInjectRawStrategyRouting:
+    """Test that inject_raw routes through the configured strategy."""
+
+    def test_inject_raw_non_ascii_uses_clipboard_in_fallback(self, mocker: Any) -> None:
+        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
+        mock_run.return_value = MagicMock(returncode=0)
+        _mock_which(mocker)
+
+        injector = YdotoolInjector(inject_strategy="clipboard-fallback")
+        injector.inject_raw("café")  # non-ASCII
+
+        # Should use clipboard: wl-copy + ydotool key
+        assert mock_run.call_count == 2
+        wl_copy_args: list[str] = mock_run.call_args_list[0][0][0]
+        assert "wl-copy" in wl_copy_args[0]
+        assert "café" in wl_copy_args
+
+    def test_inject_raw_clipboard_strategy_always_uses_clipboard(self, mocker: Any) -> None:
+        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
+        mock_run.return_value = MagicMock(returncode=0)
+        _mock_which(mocker)
+
+        injector = YdotoolInjector(inject_strategy="clipboard")
+        injector.inject_raw("hello")  # ASCII
+
+        # Clipboard strategy: always wl-copy + ydotool key
+        assert mock_run.call_count == 2
+        wl_copy_args: list[str] = mock_run.call_args_list[0][0][0]
+        assert "wl-copy" in wl_copy_args[0]
+
+
+class TestSanitizeText:
+    """Test _sanitize_text strips control characters."""
+
+    def test_clean_text_unchanged(self) -> None:
+        from murmur.injector.ydotool import _sanitize_text
+
+        assert _sanitize_text("Hello, world!") == "Hello, world!"
+
+    def test_newline_stripped(self) -> None:
+        from murmur.injector.ydotool import _sanitize_text
+
+        assert _sanitize_text("hello\nworld") == "helloworld"
+
+    def test_carriage_return_stripped(self) -> None:
+        from murmur.injector.ydotool import _sanitize_text
+
+        assert _sanitize_text("hello\r\nworld") == "helloworld"
+
+    def test_tab_stripped(self) -> None:
+        from murmur.injector.ydotool import _sanitize_text
+
+        assert _sanitize_text("hello\tworld") == "helloworld"
+
+    def test_null_byte_stripped(self) -> None:
+        from murmur.injector.ydotool import _sanitize_text
+
+        assert _sanitize_text("hel\x00lo") == "hello"
+
+    def test_spaces_preserved(self) -> None:
+        from murmur.injector.ydotool import _sanitize_text
+
+        assert _sanitize_text("hello world") == "hello world"
+
+    def test_unicode_letters_preserved(self) -> None:
+        from murmur.injector.ydotool import _sanitize_text
+
+        assert _sanitize_text("café résumé") == "café résumé"
+
+    def test_inject_strips_control_chars(self, mocker: Any) -> None:
+        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
+        mock_run.return_value = MagicMock(returncode=0)
+        _mock_which(mocker)
+
+        injector = YdotoolInjector(inject_strategy="ydotool", trailing_space=False)
+        injector.inject("hello\nworld")  # newline should be stripped
+
+        args: list[str] = mock_run.call_args[0][0]
+        injected_text = args[-1]
+        assert "\n" not in injected_text
+        assert "helloworld" == injected_text
+
+
+class TestCopyToClipboard:
+    """Test copy_to_clipboard method."""
+
+    def test_copy_to_clipboard_calls_wl_copy(self, mocker: Any) -> None:
+        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
+        mock_run.return_value = MagicMock(returncode=0)
+        _mock_which(mocker)
+
+        injector = YdotoolInjector()
+        injector.copy_to_clipboard("Hello world")
+
+        mock_run.assert_called_once()
+        args: list[str] = mock_run.call_args[0][0]
+        assert "wl-copy" in args[0]
+        assert "Hello world" in args
+
+    def test_copy_to_clipboard_no_inject(self, mocker: Any) -> None:
+        """copy_to_clipboard must NOT simulate a Ctrl+V paste."""
+        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
+        mock_run.return_value = MagicMock(returncode=0)
+        _mock_which(mocker)
+
+        injector = YdotoolInjector()
+        injector.copy_to_clipboard("Hello world")
+
+        # Only one call: wl-copy (no ydotool key for Ctrl+V)
+        assert mock_run.call_count == 1
+
+    def test_copy_to_clipboard_empty_noop(self, mocker: Any) -> None:
+        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
+        _mock_which(mocker)
+
+        injector = YdotoolInjector()
+        injector.copy_to_clipboard("")
+
+        mock_run.assert_not_called()
+
+    def test_copy_to_clipboard_no_wl_copy_logs_error(self, mocker: Any) -> None:
+        mocker.patch("murmur.injector.ydotool.shutil.which", return_value=None)
+        mock_log = mocker.patch("murmur.injector.ydotool.logger")
+
+        injector = YdotoolInjector()
+        injector.copy_to_clipboard("hello")
+
+        mock_log.error.assert_called_once()
+
+
 class TestInjectorFactory:
     """Test the injector factory function."""
 

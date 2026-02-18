@@ -14,6 +14,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import threading
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -32,6 +33,10 @@ _KEY_A: int = ecodes.KEY_A  # type: ignore[reportUnknownMemberType]
 _KEY_Z: int = ecodes.KEY_Z  # type: ignore[reportUnknownMemberType]
 _ecodes_dict: dict[str, int] = ecodes.ecodes  # type: ignore[reportUnknownMemberType]
 _key_names: dict[int, str] = ecodes.KEY  # type: ignore[reportUnknownMemberType]
+
+# Actions that use hold-to-activate (press to start, release to stop).
+# These get debounced release to filter spurious key-up events.
+_DEBOUNCED_ACTIONS: frozenset[str] = frozenset({"push_to_talk", "copy_to_clipboard"})
 
 
 def _open_device(path: str) -> Any:
@@ -97,12 +102,16 @@ class EvdevHotkeyListener(HotkeyListener):
     forward non-hotkey events, and suppresses hotkey combos. Manages
     modifier state on hotkey fire/release so the compositor sees clean
     modifier transitions.
+
+    Push-to-talk releases are debounced (default 300 ms) to filter
+    spurious key-up events that some systems generate periodically.
     """
 
     def __init__(
         self,
         bindings: list[HotkeyBinding],
         device_path: str | None = None,
+        push_to_talk_debounce_ms: int = 300,
     ) -> None:
         super().__init__()
         self._bindings: list[_ResolvedBinding] = []
@@ -135,6 +144,14 @@ class EvdevHotkeyListener(HotkeyListener):
         self._stop_event = threading.Event()
         self._held_keys: set[int] = set()
         self._suppressed_triggers: set[int] = set()
+
+        # Debounce state: maps trigger code -> (release_timestamp, binding, uinput)
+        # When a debounced action's trigger key goes up, we don't dispatch the
+        # release immediately -- instead we wait push_to_talk_debounce_ms before
+        # dispatching.  If the key goes down again within that window (spurious
+        # event), we cancel the pending release.
+        self._push_to_talk_debounce_sec: float = push_to_talk_debounce_ms / 1000.0
+        self._pending_releases: dict[int, tuple[float, _ResolvedBinding, Any]] = {}
 
     def start(self) -> None:
         """Start listening in a background thread with grab-and-forward."""
@@ -196,6 +213,10 @@ class EvdevHotkeyListener(HotkeyListener):
         try:
             while not self._stop_event.is_set():
                 events = selector.select(timeout=0.1)
+
+                # Fire any debounced releases whose window has expired.
+                self._check_pending_releases()
+
                 for key, _ in events:
                     device: Any = key.fileobj
                     # Find the matching uinput for this device
@@ -220,6 +241,45 @@ class EvdevHotkeyListener(HotkeyListener):
         finally:
             selector.close()
 
+    def _check_pending_releases(self, now: float | None = None) -> None:
+        """Fire debounced releases whose window has elapsed.
+
+        Called from the listen loop on each iteration.  Can also be called
+        directly (e.g. in tests) with an explicit ``now`` timestamp to
+        simulate time passage without sleeping.
+        """
+        ts = now if now is not None else time.monotonic()
+        expired = [
+            (code, binding, uinput)
+            for code, (t, binding, uinput) in list(self._pending_releases.items())
+            if ts - t >= self._push_to_talk_debounce_sec
+        ]
+        for code, binding, uinput in expired:
+            del self._pending_releases[code]
+            self._suppressed_triggers.discard(code)
+            self._dispatch_release(binding.action)
+            logger.debug(
+                "Debounce fired: dispatched release for code=%d action=%s",
+                code,
+                binding.action,
+            )
+            # Restore modifier state: re-press still-held modifiers, explicitly
+            # release any that were released during the debounce window
+            # (their key-up events were suppressed while the trigger was active).
+            if uinput is not None:
+                for mod_code in binding.modifier_codes:
+                    if mod_code in self._held_keys:
+                        uinput.write(  # type: ignore[reportUnknownMemberType]
+                            _EV_KEY, mod_code, 1
+                        )
+                    else:
+                        # Modifier was released during debounce window but its
+                        # key-up was suppressed -- send the explicit release now.
+                        uinput.write(  # type: ignore[reportUnknownMemberType]
+                            _EV_KEY, mod_code, 0
+                        )
+                uinput.syn()  # type: ignore[reportUnknownMemberType]
+
     def _handle_key_event(self, event: Any, uinput: Any) -> None:
         """Process a single key event with grab-and-forward logic."""
         key_event: Any = categorize(event)  # type: ignore[reportUnknownVariableType]
@@ -229,6 +289,18 @@ class EvdevHotkeyListener(HotkeyListener):
         # keystate: 0=up, 1=down, 2=hold/repeat
         if keystate == 1:  # Key down
             self._held_keys.add(code)
+
+            # Cancel any pending debounced release for this trigger code.
+            # This handles spurious key-up/key-down pairs: the key was never
+            # actually released, so we just resume the active hotkey silently.
+            if code in self._pending_releases:
+                del self._pending_releases[code]
+                logger.debug(
+                    "Debounce cancelled: trigger re-pressed, code=%d (spurious key-up)",
+                    code,
+                )
+                # The trigger is still in _suppressed_triggers; don't re-fire.
+                return
 
             # Check all bindings for a match
             matched_binding: _ResolvedBinding | None = None
@@ -264,9 +336,6 @@ class EvdevHotkeyListener(HotkeyListener):
             self._held_keys.discard(code)
 
             if code in self._suppressed_triggers:
-                # This trigger was suppressed -- dispatch release, don't forward
-                self._suppressed_triggers.discard(code)
-
                 # Find which binding this trigger belongs to
                 released_binding: _ResolvedBinding | None = None
                 for binding in self._bindings:
@@ -275,21 +344,42 @@ class EvdevHotkeyListener(HotkeyListener):
                         break
 
                 if released_binding is not None:
-                    self._dispatch_release(released_binding.action)
+                    if released_binding.action in _DEBOUNCED_ACTIONS:
+                        # Schedule a debounced release instead of firing immediately.
+                        # The trigger stays in _suppressed_triggers until debounce fires.
+                        self._pending_releases[code] = (
+                            time.monotonic(),
+                            released_binding,
+                            uinput,
+                        )
+                        logger.debug(
+                            "Debouncing release: code=%d action=%s (%.0f ms window)",
+                            code,
+                            released_binding.action,
+                            self._push_to_talk_debounce_sec * 1000,
+                        )
+                    else:
+                        # Toggle actions: release immediately, no debounce needed.
+                        self._suppressed_triggers.discard(code)
+                        self._dispatch_release(released_binding.action)
 
-                    # Restore modifiers: re-press those physically held
-                    if uinput is not None:
-                        for mod_code in released_binding.modifier_codes:
-                            if mod_code in self._held_keys:
-                                uinput.write(  # type: ignore[reportUnknownMemberType]
-                                    _EV_KEY, mod_code, 1
-                                )
-                        uinput.syn()  # type: ignore[reportUnknownMemberType]
+                        # Restore modifiers: re-press those physically held
+                        if uinput is not None:
+                            for mod_code in released_binding.modifier_codes:
+                                if mod_code in self._held_keys:
+                                    uinput.write(  # type: ignore[reportUnknownMemberType]
+                                        _EV_KEY, mod_code, 1
+                                    )
+                            uinput.syn()  # type: ignore[reportUnknownMemberType]
             elif (
                 code in self._all_modifier_codes
                 and self._suppressed_triggers
             ):
-                # Modifier released while a hotkey trigger is active -- suppress
+                # Modifier released while a hotkey trigger is active (or in its
+                # debounce window) -- suppress the key-up so the compositor
+                # doesn't see a spurious modifier release.
+                # _check_pending_releases() will send the explicit release if
+                # the modifier was released during a debounce window.
                 pass
             else:
                 # Normal key up -- forward

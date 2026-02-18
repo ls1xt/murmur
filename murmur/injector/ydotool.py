@@ -14,10 +14,30 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+import unicodedata
 
 from murmur.injector.base import TextInjector
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_text(text: str) -> str:
+    """Strip control characters before injection.
+
+    Control characters (newline, carriage return, tab, NUL, …) can cause
+    dangerous effects when injected into terminal applications -- for example,
+    a newline would submit the current input buffer.  Only printable Unicode
+    characters (general category != C*) are kept.
+    """
+    clean = "".join(
+        ch for ch in text if unicodedata.category(ch)[0] != "C"
+    )
+    removed = len(text) - len(clean)
+    if removed:
+        logger.warning(
+            "Sanitized %d control character(s) from injection text", removed
+        )
+    return clean
 
 
 class YdotoolInjector(TextInjector):
@@ -80,6 +100,10 @@ class YdotoolInjector(TextInjector):
         if not text:
             return
 
+        text = _sanitize_text(text)
+        if not text:
+            return
+
         if self._trailing_space:
             text = text + " "
 
@@ -95,33 +119,32 @@ class YdotoolInjector(TextInjector):
             self._inject_via_ydotool(text)
 
     def inject_raw(self, text: str) -> None:
-        """Inject text directly without trailing space or strategy routing.
+        """Inject text without trailing space, routing through the configured strategy.
 
-        Used for partial transcripts that are mid-sentence.
+        Used for partial transcripts that are mid-sentence.  Routes through the
+        same strategy as inject() to ensure non-ASCII characters are handled
+        consistently -- which keeps the injected character count in sync with
+        len(text) used by inject_backspaces().
         """
+        if not text:
+            return
+
+        text = _sanitize_text(text)
         if not text:
             return
 
         logger.debug("Injecting raw partial: %r", text[:80])
 
-        cmd = [self._ydotool_path, "type", "--clearmodifiers", "--key-delay", "0", "--key-hold", "0", "--", text]
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode != 0:
-                logger.error(
-                    "ydotool raw inject failed (rc=%d): %s",
-                    result.returncode,
-                    result.stderr.strip(),
-                )
-        except subprocess.TimeoutExpired:
-            logger.error("ydotool raw inject timed out")
-        except FileNotFoundError:
-            logger.error("ydotool not found at %s", self._ydotool_path)
+        if self._inject_strategy == "clipboard":
+            self._inject_via_clipboard(text)
+        elif self._inject_strategy == "clipboard-fallback":
+            if text.isascii():
+                self._inject_via_ydotool_raw(text)
+            else:
+                self._inject_via_clipboard(text)
+        else:
+            # "ydotool" strategy
+            self._inject_via_ydotool_raw(text)
 
     def inject_backspaces(self, count: int) -> None:
         """Inject N backspace keypresses to erase previous text.
@@ -154,6 +177,58 @@ class YdotoolInjector(TextInjector):
                 )
         except subprocess.TimeoutExpired:
             logger.error("ydotool backspace timed out")
+        except FileNotFoundError:
+            logger.error("ydotool not found at %s", self._ydotool_path)
+
+    def copy_to_clipboard(self, text: str) -> None:
+        """Copy text to the system clipboard via wl-copy (no injection)."""
+        if not text:
+            return
+        if not self._wl_copy_path:
+            logger.error("wl-copy not found; cannot copy to clipboard")
+            return
+        logger.debug("Copying to clipboard: %r", text[:80])
+        try:
+            result = subprocess.run(
+                [self._wl_copy_path, "--", text],
+                timeout=5,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                logger.error("wl-copy failed: %s", result.stderr.strip())
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            logger.error("wl-copy error: %s", e)
+
+    def _inject_via_ydotool_raw(self, text: str) -> None:
+        """Inject text via ydotool type without a trailing space.
+
+        Used for ASCII partial transcripts in inject_raw().
+        """
+        cmd = [
+            self._ydotool_path,
+            "type",
+            "--clearmodifiers",
+            "--key-delay", "0",
+            "--key-hold", "0",
+            "--", text,
+        ]
+        logger.debug("Injecting raw via ydotool: %r", text[:80])
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                logger.error(
+                    "ydotool raw inject failed (rc=%d): %s",
+                    result.returncode,
+                    result.stderr.strip(),
+                )
+        except subprocess.TimeoutExpired:
+            logger.error("ydotool raw inject timed out")
         except FileNotFoundError:
             logger.error("ydotool not found at %s", self._ydotool_path)
 

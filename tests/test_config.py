@@ -25,9 +25,9 @@ class TestDefaultValues:
         config = HotkeyConfig()
         assert config.backend == "auto"
         assert config.evdev_device is None
-        assert len(config.bindings) == 3
+        assert len(config.bindings) == 4
         actions = [b.action for b in config.bindings]
-        assert actions == ["push_to_talk", "toggle_start", "toggle_stop"]
+        assert actions == ["push_to_talk", "toggle_start", "toggle_stop", "copy_to_clipboard"]
 
     def test_hotkey_binding_defaults(self) -> None:
         binding = HotkeyBinding()
@@ -160,9 +160,9 @@ class TestFromDict:
         data: dict[str, Any] = {"hotkey": {"nonexistent_field": "value"}}
         config = DictationConfig._from_dict(data)
         # Should get default bindings since no old or new format detected
-        assert len(config.hotkey.bindings) == 3
+        assert len(config.hotkey.bindings) == 4
 
     def test_from_dict_empty_dict(self) -> None:
         data: dict[str, Any] = {}
         config = DictationConfig._from_dict(data)
-        assert len(config.hotkey.bindings) == 3
+        assert len(config.hotkey.bindings) == 4

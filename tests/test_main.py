@@ -42,7 +42,7 @@ class TestDictationAppLifecycle:
     def test_activate_starts_transcription(self, mocker: Any) -> None:
         app, transcriber, _, _ = _make_app(mocker)
 
-        app._on_activate()
+        app._on_activate("push_to_talk")
 
         # Give the thread a moment to call start()
         time.sleep(0.05)
@@ -61,7 +61,7 @@ class TestDictationAppLifecycle:
         app, transcriber, _, _ = _make_app(mocker)
 
         transcriber.is_streaming = True
-        app._on_activate()
+        app._on_activate("push_to_talk")
 
         time.sleep(0.05)
         transcriber.start.assert_not_called()
@@ -142,7 +142,7 @@ class TestDictationAppLifecycle:
 
         for _ in range(3):
             transcriber.is_streaming = False
-            app._on_activate()
+            app._on_activate("push_to_talk")
             time.sleep(0.05)
 
             transcriber.is_streaming = True
@@ -170,3 +170,63 @@ class TestDictationAppLifecycle:
 
         transcriber.stop.assert_called_once()
         hotkey.stop.assert_called_once()
+
+
+class TestClipboardMode:
+    """Test copy_to_clipboard hotkey action behaviour."""
+
+    def test_activate_clipboard_sets_flag(self, mocker: Any) -> None:
+        app, _, _, _ = _make_app(mocker)
+
+        app._on_activate("copy_to_clipboard")
+        assert app._clipboard_mode is True
+
+    def test_activate_push_to_talk_clears_flag(self, mocker: Any) -> None:
+        app, _, _, _ = _make_app(mocker)
+
+        app._clipboard_mode = True
+        app._on_activate("push_to_talk")
+        assert app._clipboard_mode is False
+
+    def test_partial_skipped_in_clipboard_mode(self, mocker: Any) -> None:
+        app, _, injector, _ = _make_app(mocker)
+
+        app._clipboard_mode = True
+        app._on_partial_transcript("Hello world")
+
+        injector.inject_raw.assert_not_called()
+        injector.inject_backspaces.assert_not_called()
+
+    def test_final_copies_to_clipboard(self, mocker: Any) -> None:
+        app, _, injector, _ = _make_app(mocker)
+
+        app._clipboard_mode = True
+        app._on_final_transcript("Hello world.")
+
+        injector.copy_to_clipboard.assert_called_once_with("Hello world.")
+        injector.inject.assert_not_called()
+
+    def test_final_clipboard_resets_flag(self, mocker: Any) -> None:
+        app, _, injector, _ = _make_app(mocker)
+
+        app._clipboard_mode = True
+        app._on_final_transcript("Hello world.")
+
+        assert app._clipboard_mode is False
+
+    def test_final_blank_in_clipboard_mode_skips_copy(self, mocker: Any) -> None:
+        app, _, injector, _ = _make_app(mocker)
+
+        app._clipboard_mode = True
+        app._on_final_transcript("   ")
+
+        injector.copy_to_clipboard.assert_not_called()
+
+    def test_tray_activate_uses_push_to_talk(self, mocker: Any) -> None:
+        """Tray left-click always uses push_to_talk, not clipboard mode."""
+        app, transcriber, _, _ = _make_app(mocker)
+
+        transcriber.is_streaming = False
+        app._on_tray_activate()
+
+        assert app._clipboard_mode is False

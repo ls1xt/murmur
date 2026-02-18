@@ -17,6 +17,7 @@ def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
             return EvdevHotkeyListener(
                 bindings=config.bindings,
                 device_path=config.evdev_device,
+                push_to_talk_debounce_ms=config.push_to_talk_debounce_ms,
             )
         case "auto":
             if sys.platform == "linux":
@@ -25,6 +26,7 @@ def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
                 return EvdevHotkeyListener(
                     bindings=config.bindings,
                     device_path=config.evdev_device,
+                    push_to_talk_debounce_ms=config.push_to_talk_debounce_ms,
                 )
             raise RuntimeError(f"No hotkey backend available for {sys.platform}")
         case _:

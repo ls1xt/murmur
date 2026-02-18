@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -33,7 +34,7 @@ class TestHotkeyListenerBase:
         listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
 
         listener._dispatch_action("push_to_talk")
-        on_activate.assert_called_once()
+        on_activate.assert_called_once_with("push_to_talk")
         on_deactivate.assert_not_called()
 
     def test_push_to_talk_deactivate_on_release(self) -> None:
@@ -53,7 +54,7 @@ class TestHotkeyListenerBase:
         listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
 
         listener._dispatch_action("toggle_start")
-        on_activate.assert_called_once()
+        on_activate.assert_called_once_with("toggle_start")
         on_deactivate.assert_not_called()
 
     def test_toggle_stop_deactivates(self) -> None:
@@ -91,6 +92,26 @@ class TestHotkeyListenerBase:
         # No callbacks set -- should not raise
         listener._dispatch_action("push_to_talk")
         listener._dispatch_release("push_to_talk")
+
+    def test_copy_to_clipboard_activate_on_dispatch(self) -> None:
+        listener = self._make_listener()
+        on_activate = MagicMock()
+        on_deactivate = MagicMock()
+        listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
+
+        listener._dispatch_action("copy_to_clipboard")
+        on_activate.assert_called_once_with("copy_to_clipboard")
+        on_deactivate.assert_not_called()
+
+    def test_copy_to_clipboard_deactivate_on_release(self) -> None:
+        listener = self._make_listener()
+        on_activate = MagicMock()
+        on_deactivate = MagicMock()
+        listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
+
+        listener._dispatch_release("copy_to_clipboard")
+        on_deactivate.assert_called_once()
+        on_activate.assert_not_called()
 
 
 class TestEvdevHotkeyListener:
@@ -132,7 +153,7 @@ class TestEvdevHotkeyListener:
         mocker.patch("murmur.hotkey.evdev.categorize", return_value=key_event)
 
         listener._handle_key_event(event, None)
-        on_activate.assert_called_once()
+        on_activate.assert_called_once_with("push_to_talk")
 
     def test_push_to_talk_deactivates_on_release(self, mocker: Any) -> None:
         from murmur.hotkey.evdev import EvdevHotkeyListener, _ecodes_dict
@@ -158,7 +179,60 @@ class TestEvdevHotkeyListener:
         mocker.patch("murmur.hotkey.evdev.categorize", return_value=key_event)
 
         listener._handle_key_event(event, None)
+        # Release is debounced -- not called immediately
+        on_deactivate.assert_not_called()
+
+        # Advance time past the debounce window to fire the pending release
+        listener._check_pending_releases(now=time.monotonic() + 1.0)
         on_deactivate.assert_called_once()
+
+    def test_push_to_talk_debounce_cancels_on_repress(self, mocker: Any) -> None:
+        """Spurious key-up followed by key-down within debounce window cancels release."""
+        from murmur.hotkey.evdev import EvdevHotkeyListener, _ecodes_dict
+
+        on_activate = MagicMock()
+        on_deactivate = MagicMock()
+
+        listener = EvdevHotkeyListener(
+            bindings=self._default_bindings(),
+        )
+        listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
+
+        ctrl_code: int = _ecodes_dict["KEY_LEFTCTRL"]
+        shift_code: int = _ecodes_dict["KEY_LEFTSHIFT"]
+        space_code: int = _ecodes_dict["KEY_SPACE"]
+
+        listener._held_keys.add(ctrl_code)
+        listener._held_keys.add(shift_code)
+        listener._suppressed_triggers.add(space_code)
+
+        # Simulate spurious space up
+        key_up_event = MagicMock()
+        key_up_event.code = space_code
+        key_up = MagicMock()
+        key_up.keystate = 0
+        mocker.patch("murmur.hotkey.evdev.categorize", return_value=key_up)
+        listener._handle_key_event(key_up_event, None)
+
+        assert space_code in listener._pending_releases
+        on_deactivate.assert_not_called()
+
+        # Simulate key-down again (spurious bounce -- user still holding)
+        listener._held_keys.add(space_code)
+        key_down_event = MagicMock()
+        key_down_event.code = space_code
+        key_down = MagicMock()
+        key_down.keystate = 1
+        mocker.patch("murmur.hotkey.evdev.categorize", return_value=key_down)
+        listener._handle_key_event(key_down_event, None)
+
+        # Pending release should be cancelled
+        assert space_code not in listener._pending_releases
+        # Trigger still suppressed (hotkey still active)
+        assert space_code in listener._suppressed_triggers
+        on_deactivate.assert_not_called()
+        # on_activate should NOT re-fire (spurious cancel, not a new press)
+        on_activate.assert_not_called()
 
     def test_trigger_without_modifiers_no_activate(self, mocker: Any) -> None:
         from murmur.hotkey.evdev import EvdevHotkeyListener, _ecodes_dict
@@ -312,7 +386,7 @@ class TestEvdevHotkeyListener:
         mocker.patch("murmur.hotkey.evdev.categorize", return_value=key_event)
 
         listener._handle_key_event(event, None)
-        on_activate.assert_called_once()
+        on_activate.assert_called_once_with("toggle_start")
 
     @pytest.mark.hardware()
     def test_real_keyboard_detection(self) -> None:

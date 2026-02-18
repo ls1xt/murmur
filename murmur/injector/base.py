@@ -13,9 +13,10 @@ class TextInjector(ABC):
 
     @abstractmethod
     def inject_raw(self, text: str) -> None:
-        """Inject text without trailing space or strategy routing.
+        """Inject text without trailing space.
 
         Used for partial transcripts that are mid-sentence.
+        Respects the configured injection strategy (same as inject()).
         """
         ...
 
@@ -28,3 +29,10 @@ class TextInjector(ABC):
     def is_available(self) -> bool:
         """Check if the injection backend is available and ready."""
         ...
+
+    def copy_to_clipboard(self, text: str) -> None:
+        """Copy text to the system clipboard without injecting into an app.
+
+        Default implementation does nothing.  Backends that support clipboard
+        access (e.g. ydotool with wl-copy) should override this.
+        """

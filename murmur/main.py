@@ -36,6 +36,10 @@ class DictationApp:
         1. User presses hotkey -> start transcriber (mic + AssemblyAI stream)
         2. AssemblyAI sends transcript turns -> inject text via ydotool
         3. User releases hotkey -> stop transcriber
+
+    Two activation modes are supported via different hotkey actions:
+        - ``push_to_talk``: hold key to record, release to inject into app.
+        - ``copy_to_clipboard``: hold key to record, release to copy to clipboard.
     """
 
     def __init__(self, config: DictationConfig) -> None:
@@ -45,6 +49,7 @@ class DictationApp:
         self._inject_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._last_partial: str = ""
+        self._clipboard_mode: bool = False  # True when action == copy_to_clipboard
 
         self.hotkey: HotkeyListener = create_hotkey_listener(config.hotkey)
         self.transcriber: Transcriber = create_transcriber(config.transcriber)
@@ -66,12 +71,17 @@ class DictationApp:
             on_error=self._on_transcriber_error,
         )
 
-    def _on_activate(self) -> None:
-        """Called when the hotkey is activated (start recording)."""
+    def _on_activate(self, action: str) -> None:
+        """Called when the hotkey is activated (start recording).
+
+        ``action`` is one of "push_to_talk", "toggle_start", or
+        "copy_to_clipboard" and determines what happens to the transcript.
+        """
         with self._lock:
             if self.transcriber.is_streaming:
                 return  # already recording
-        logger.info("Recording started")
+            self._clipboard_mode = action == "copy_to_clipboard"
+        logger.info("Recording started (action=%s)", action)
         self.feedback.play_start()
         self.notifier.info("Recording started")
         self.tray.set_state("recording")
@@ -92,17 +102,23 @@ class DictationApp:
     def _on_partial_transcript(self, text: str) -> None:
         """Called with intermediate (partial) transcript text.
 
-        Injects the delta between the previous partial and the new one.
-        When AssemblyAI appends words, only the new suffix is injected.
-        When text diverges, the old partial is backspaced and new text typed.
+        In copy_to_clipboard mode partial injection is skipped entirely --
+        only the final transcript ends up in the clipboard.
+
+        In normal mode injects the delta between the previous partial and the
+        new one. When AssemblyAI appends words, only the new suffix is
+        injected. When text diverges, the old partial is backspaced and new
+        text typed.
         """
-        logger.info("Partial transcript received: %r (last_partial=%r)", text[:120], self._last_partial[:80])
         if not text:
             return
+        if self._clipboard_mode:
+            return  # Don't inject partials in clipboard mode
+        logger.info("Partial transcript received: %r (last_partial=%r)", text[:120], self._last_partial[:80])
         with self._inject_lock:
             if text.startswith(self._last_partial):
                 # Common case: AssemblyAI appended words
-                suffix = text[len(self._last_partial) :]
+                suffix = text[len(self._last_partial):]
                 if suffix:
                     logger.info("Injecting delta suffix: %r", suffix[:80])
                     self.injector.inject_raw(suffix)
@@ -123,14 +139,19 @@ class DictationApp:
             self._last_partial = text
 
     def _on_final_transcript(self, text: str) -> None:
-        """Called with finalized turn text -- inject it into the active app.
+        """Called with finalized turn text.
 
-        Backspaces the partial text first, then injects the final formatted
-        text. Serialized via _inject_lock to prevent races with partials.
+        In copy_to_clipboard mode: copies the transcript to the system
+        clipboard via wl-copy instead of injecting it.
+
+        In normal mode: backspaces the partial text first, then injects the
+        final formatted text.  Serialized via _inject_lock to prevent races
+        with partials.
         """
         logger.info("Final transcript received: %r (last_partial=%r)", text[:120], self._last_partial[:80])
         with self._inject_lock:
-            # Backspace the partial first
+            # Backspace any partial text (should be empty in clipboard mode,
+            # but guard against edge cases).
             if self._last_partial:
                 logger.info("Backspacing %d partial chars before final inject", len(self._last_partial))
                 self.injector.inject_backspaces(
@@ -138,7 +159,13 @@ class DictationApp:
                 )
                 self._last_partial = ""
             if not text.strip():
-                logger.info("Final text was empty/whitespace, skipping injection")
+                logger.info("Final text was empty/whitespace, skipping")
+                return
+            if self._clipboard_mode:
+                self._clipboard_mode = False
+                logger.info("Clipboard mode: copying final transcript to clipboard")
+                self.injector.copy_to_clipboard(text)
+                self.notifier.info("Copied to clipboard")
                 return
             logger.info("Injecting final: %s", text)
             try:
@@ -194,7 +221,7 @@ class DictationApp:
         if self.transcriber.is_streaming:
             self._on_deactivate()
         else:
-            self._on_activate()
+            self._on_activate("push_to_talk")
 
     def _request_shutdown(self) -> None:
         """Request daemon shutdown (e.g., from tray Quit menu)."""

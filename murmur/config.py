@@ -30,7 +30,7 @@ class HotkeyBinding:
 
 
 def _default_bindings() -> list[HotkeyBinding]:
-    """Create the default three-binding hotkey configuration."""
+    """Create the default hotkey configuration."""
     return [
         HotkeyBinding(
             modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
@@ -47,6 +47,11 @@ def _default_bindings() -> list[HotkeyBinding]:
             trigger="KEY_L",
             action="toggle_stop",
         ),
+        HotkeyBinding(
+            modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
+            trigger="KEY_C",
+            action="copy_to_clipboard",
+        ),
     ]
 
 
@@ -57,6 +62,7 @@ class HotkeyConfig:
     bindings: list[HotkeyBinding] = field(default_factory=_default_bindings)
     backend: str = "auto"
     evdev_device: str | None = None
+    push_to_talk_debounce_ms: int = 300
 
 
 @dataclass
@@ -219,11 +225,15 @@ class DictationConfig:
                         action=old_action,
                     )
                 ]
-            # Apply remaining hotkey fields (backend, evdev_device)
+            # Apply remaining hotkey fields (backend, evdev_device, debounce)
             if "backend" in raw_hotkey:
                 config.hotkey.backend = raw_hotkey["backend"]
             if "evdev_device" in raw_hotkey:
                 config.hotkey.evdev_device = raw_hotkey["evdev_device"]
+            if "push_to_talk_debounce_ms" in raw_hotkey:
+                config.hotkey.push_to_talk_debounce_ms = int(
+                    raw_hotkey["push_to_talk_debounce_ms"]
+                )
         _apply_section(data, "transcriber", config.transcriber)
         _apply_section(data, "injector", config.injector)
         _apply_section(data, "feedback", config.feedback)
