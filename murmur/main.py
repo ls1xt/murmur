@@ -66,6 +66,7 @@ class DictationApp:
         self._stop_event = threading.Event()
         self._last_partial: str = ""
         self._clipboard_mode: bool = False  # True when action == copy_to_clipboard
+        self._clipboard_buffer: list[str] = []  # accumulates turns in clipboard mode
         self._session_id: int = 0  # current session index; set before each start
 
         self.hotkey: HotkeyListener = create_hotkey_listener(config.hotkey)
@@ -99,6 +100,7 @@ class DictationApp:
             if self.transcriber.is_streaming:
                 return  # already recording
             self._clipboard_mode = action == "copy_to_clipboard"
+            self._clipboard_buffer = []
             self._session_id += 1
         _session_var.set(self._session_id)
         logger.info("Recording started (trigger=%s action=%s)", trigger, action)
@@ -117,7 +119,29 @@ class DictationApp:
         self.notifier.info("Recording stopped")
         self.tray.set_state("idle")
         self._last_partial = ""
-        threading.Thread(target=self.transcriber.stop, daemon=True).start()
+        threading.Thread(target=self._stop_and_deliver, daemon=True).start()
+
+    def _stop_and_deliver(self) -> None:
+        """Stop the transcriber, then deliver clipboard if in clipboard mode.
+
+        Runs in a background thread.  Calling transcriber.stop() joins the
+        SDK stream thread, so by the time stop() returns all final-transcript
+        callbacks have already fired and _clipboard_buffer is complete.
+        """
+        self.transcriber.stop()
+        if not self._clipboard_mode:
+            return
+        with self._inject_lock:
+            full_text = " ".join(self._clipboard_buffer).strip()
+            self._clipboard_buffer = []
+        if full_text:
+            logger.info(
+                "Clipboard mode: copying full session to clipboard (%d chars)", len(full_text)
+            )
+            self.injector.copy_to_clipboard(full_text)
+            self.notifier.info("Copied to clipboard")
+        else:
+            logger.info("Clipboard mode: no text to copy")
 
     def _on_partial_transcript(self, text: str) -> None:
         """Called with intermediate (partial) transcript text.
@@ -184,10 +208,8 @@ class DictationApp:
                 logger.info("Final text was empty/whitespace, skipping")
                 return
             if self._clipboard_mode:
-                self._clipboard_mode = False
-                logger.info("Clipboard mode: copying final transcript to clipboard")
-                self.injector.copy_to_clipboard(text)
-                self.notifier.info("Copied to clipboard")
+                logger.info("Clipboard mode: buffering turn %r", text[:80])
+                self._clipboard_buffer.append(text)
                 return
             logger.info("Injecting final: %s", text)
             try:
