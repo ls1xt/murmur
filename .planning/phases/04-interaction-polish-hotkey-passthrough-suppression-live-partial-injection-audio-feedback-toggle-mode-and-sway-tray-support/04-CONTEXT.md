@@ -31,11 +31,13 @@ Make dictation feel responsive and polished: hotkey doesn't leak characters, tex
 
 ### Hotkey modes and shortcuts
 - Both `push_to_talk` and `toggle` modes are already fully implemented and tested in `hotkey/base.py`
-- Expose both via **separate configurable shortcuts** (not just a mode toggle):
-  - Default push-to-talk shortcut: `Ctrl+Shift+Space` (existing)
-  - Default toggle shortcut: a different combo (user's choice on the exact keys)
-- Wire through `HotkeyConfig` — either two separate hotkey configs or one config with two trigger bindings
-- User should be able to configure which shortcut maps to which mode
+- Expose **three distinct shortcuts**, each with its own action:
+  - `Ctrl+Alt+Space` — push-to-talk (hold to record, release to stop)
+  - `Ctrl+Alt+K` — toggle start recording (press once to begin)
+  - `Ctrl+Alt+L` — stop recording (press to end toggle session)
+- The current single-hotkey `HotkeyConfig` needs to evolve into a multi-binding system
+- All three shortcuts share the same `Ctrl+Alt` modifier prefix; only the trigger key differs
+- Config structure: replace single `modifiers`/`trigger`/`mode` with a `bindings` list or named binding fields
 
 ### Audio feedback
 - Audio is already wired: `AudioFeedback.play_start()` and `play_stop()` are called in `_on_activate`/`_on_deactivate`
@@ -69,6 +71,8 @@ Make dictation feel responsive and polished: hotkey doesn't leak characters, tex
 - User wants delta injection: "just find out what the diff is, store last inserted and then insert the delta"
 - User confirmed their waybar tray works (blueman, nm-applet visible) — so SNI registration is the right path
 - The user's sway config uses `bar swaybar_command waybar`, so the tray host is waybar, not swaybar
+- Explicit shortcut assignments: `Ctrl+Alt+Space` (push-to-talk), `Ctrl+Alt+K` (toggle start), `Ctrl+Alt+L` (stop recording)
+- All shortcuts use `Ctrl+Alt` prefix — deliberately avoids `Shift` to prevent accidental character input
 
 </specifics>
 
