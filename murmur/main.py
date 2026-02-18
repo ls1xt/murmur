@@ -8,6 +8,7 @@ to provide push-to-talk (or toggle) dictation into any application.
 from __future__ import annotations
 
 import argparse
+import contextvars
 import logging
 import signal
 import threading
@@ -26,6 +27,21 @@ from murmur.transcriber import create_transcriber
 from murmur.transcriber.base import Transcriber
 
 logger = logging.getLogger(__name__)
+
+# Session context: injected into every LogRecord via _SessionFilter so that
+# all log lines produced during a dictation session carry the session index.
+# SDK-internal threads don't inherit this automatically — callbacks re-set it.
+_session_var: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "murmur_session", default=0
+)
+
+
+class _SessionFilter(logging.Filter):
+    """Injects ``session`` into every LogRecord from any thread."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.session = _session_var.get()  # type: ignore[attr-defined]
+        return True
 
 
 class DictationApp:
@@ -50,6 +66,7 @@ class DictationApp:
         self._stop_event = threading.Event()
         self._last_partial: str = ""
         self._clipboard_mode: bool = False  # True when action == copy_to_clipboard
+        self._session_id: int = 0  # current session index; set before each start
 
         self.hotkey: HotkeyListener = create_hotkey_listener(config.hotkey)
         self.transcriber: Transcriber = create_transcriber(config.transcriber)
@@ -71,17 +88,20 @@ class DictationApp:
             on_error=self._on_transcriber_error,
         )
 
-    def _on_activate(self, action: str) -> None:
+    def _on_activate(self, action: str, trigger: str = "hotkey") -> None:
         """Called when the hotkey is activated (start recording).
 
         ``action`` is one of "push_to_talk", "toggle_start", or
         "copy_to_clipboard" and determines what happens to the transcript.
+        ``trigger`` is "hotkey" or "tray" and indicates what triggered recording.
         """
         with self._lock:
             if self.transcriber.is_streaming:
                 return  # already recording
             self._clipboard_mode = action == "copy_to_clipboard"
-        logger.info("Recording started (action=%s)", action)
+            self._session_id += 1
+        _session_var.set(self._session_id)
+        logger.info("Recording started (trigger=%s action=%s)", trigger, action)
         self.feedback.play_start()
         self.notifier.info("Recording started")
         self.tray.set_state("recording")
@@ -110,6 +130,7 @@ class DictationApp:
         injected. When text diverges, the old partial is backspaced and new
         text typed.
         """
+        _session_var.set(self._session_id)  # propagate session to SDK thread
         if not text:
             return
         if self._clipboard_mode:
@@ -148,6 +169,7 @@ class DictationApp:
         final formatted text.  Serialized via _inject_lock to prevent races
         with partials.
         """
+        _session_var.set(self._session_id)  # propagate session to SDK thread
         logger.info("Final transcript received: %r (last_partial=%r)", text[:120], self._last_partial[:80])
         with self._inject_lock:
             # Backspace any partial text (should be empty in clipboard mode,
@@ -175,6 +197,7 @@ class DictationApp:
 
     def _on_transcriber_error(self, error: Exception) -> None:
         """Called when the transcriber encounters an error."""
+        _session_var.set(self._session_id)  # propagate session to SDK thread
         logger.error("Transcription error: %s", error)
         self.notifier.error(str(error))
         self.tray.set_state("error", reason=str(error))
@@ -221,7 +244,7 @@ class DictationApp:
         if self.transcriber.is_streaming:
             self._on_deactivate()
         else:
-            self._on_activate("push_to_talk")
+            self._on_activate("push_to_talk", trigger="tray")
 
     def _request_shutdown(self) -> None:
         """Request daemon shutdown (e.g., from tray Quit menu)."""
@@ -268,9 +291,13 @@ def main() -> None:
 
     logging.basicConfig(
         level=getattr(logging, config.log_level.upper(), logging.INFO),
-        format="%(asctime)s [%(levelname)-7s] %(name)s: %(message)s",
+        format="%(asctime)s [%(levelname)-7s] [s=%(session)d] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
+    # Install session filter on all handlers so %(session)d is always defined.
+    _filter = _SessionFilter()
+    for handler in logging.root.handlers:
+        handler.addFilter(_filter)
 
     if not config.transcriber.api_key:
         fatal("ASSEMBLYAI_API_KEY not set. Get a key at: https://www.assemblyai.com/")

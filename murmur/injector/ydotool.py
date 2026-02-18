@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+import time
 import unicodedata
 
 from murmur.injector.base import TextInjector
@@ -56,6 +57,7 @@ class YdotoolInjector(TextInjector):
         self._inject_strategy = inject_strategy
         self._resolved_path: str | None = shutil.which(self._ydotool_path)
         self._wl_copy_path: str | None = shutil.which("wl-copy")
+        self._wl_copy_proc: subprocess.Popen[bytes] | None = None
 
         if not self._resolved_path:
             logger.warning("ydotool not found in PATH")
@@ -181,23 +183,32 @@ class YdotoolInjector(TextInjector):
             logger.error("ydotool not found at %s", self._ydotool_path)
 
     def copy_to_clipboard(self, text: str) -> None:
-        """Copy text to the system clipboard via wl-copy (no injection)."""
+        """Copy text to the system clipboard via wl-copy (no injection).
+
+        wl-copy stays alive to serve clipboard requests so we use Popen and
+        do not wait.  The previous wl-copy process (if any) is killed first
+        so we don't leave orphaned processes accumulating.
+        """
         if not text:
             return
         if not self._wl_copy_path:
             logger.error("wl-copy not found; cannot copy to clipboard")
             return
+        # Kill previous wl-copy if still running
+        if self._wl_copy_proc is not None:
+            try:
+                self._wl_copy_proc.kill()
+            except OSError:
+                pass
+            self._wl_copy_proc = None
         logger.debug("Copying to clipboard: %r", text[:80])
         try:
-            result = subprocess.run(
+            self._wl_copy_proc = subprocess.Popen(
                 [self._wl_copy_path, "--", text],
-                timeout=5,
-                capture_output=True,
-                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
             )
-            if result.returncode != 0:
-                logger.error("wl-copy failed: %s", result.stderr.strip())
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        except FileNotFoundError as e:
             logger.error("wl-copy error: %s", e)
 
     def _inject_via_ydotool_raw(self, text: str) -> None:
@@ -270,20 +281,20 @@ class YdotoolInjector(TextInjector):
 
         logger.debug("Injecting text via clipboard: %r", text[:80])
 
-        # Write to Wayland clipboard
+        # Write to Wayland clipboard.
+        # wl-copy stays alive to serve clipboard requests; use Popen and do
+        # NOT wait.  Give it 50 ms to register with the compositor before
+        # sending Ctrl+V.
         try:
-            result = subprocess.run(
+            proc = subprocess.Popen(
                 [self._wl_copy_path, "--", text],
-                timeout=5,
-                capture_output=True,
-                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
             )
-            if result.returncode != 0:
-                logger.error("wl-copy failed: %s", result.stderr.strip())
-                return
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        except FileNotFoundError as e:
             logger.error("wl-copy error: %s", e)
             return
+        time.sleep(0.05)
 
         # Simulate Ctrl+V paste via ydotool
         # Keycodes: 29=KEY_LEFTCTRL, 47=KEY_V

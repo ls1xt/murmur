@@ -198,6 +198,16 @@ class AssemblyAITranscriber(Transcriber):
             self._config.format_turns,
             "pcm_s16le",
         )
+        # Open the mic stream BEFORE connecting so that audio captured during
+        # the WebSocket handshake (~200-500 ms) is buffered in the queue and
+        # not lost.
+        try:
+            self._mic_stream = _CallbackMicStream(sample_rate=self._config.sample_rate)
+        except Exception as e:
+            self._is_streaming = False
+            logger.error("Failed to open mic stream: %s", e)
+            raise
+
         self._client.connect(params)
 
         self._stream_thread = threading.Thread(target=self._stream_audio, daemon=True)
@@ -205,15 +215,16 @@ class AssemblyAITranscriber(Transcriber):
         logger.info("AssemblyAI streaming session started (gen=%d)", my_gen)
 
     def _stream_audio(self) -> None:
-        """Stream microphone audio to AssemblyAI (runs in background thread)."""
+        """Stream microphone audio to AssemblyAI (runs in background thread).
+
+        The mic stream is created in start() before connect() so that audio
+        captured during the WebSocket handshake is already buffered here.
+        """
         try:
-            self._mic_stream = _CallbackMicStream(
-                sample_rate=self._config.sample_rate
-            )
-            logger.info("Mic stream opened, starting audio stream to AssemblyAI")
+            logger.info("Starting audio stream to AssemblyAI")
             client: Any = self._client
             mic: Any = self._mic_stream
-            if client is not None:
+            if client is not None and mic is not None:
                 client.stream(mic)
             logger.info("Audio stream ended")
         except Exception as e:
