@@ -128,8 +128,11 @@ class DictationApp:
         SDK stream thread, so by the time stop() returns all final-transcript
         callbacks have already fired and _clipboard_buffer is complete.
         """
+        # Snapshot before stop() so a racing _on_activate for a new session
+        # can't flip _clipboard_mode to False and silently skip the copy.
+        clipboard_mode = self._clipboard_mode
         self.transcriber.stop()
-        if not self._clipboard_mode:
+        if not clipboard_mode:
             return
         with self._inject_lock:
             full_text = " ".join(self._clipboard_buffer).strip()

@@ -194,7 +194,8 @@ class YdotoolInjector(TextInjector):
         if not self._wl_copy_path:
             logger.error("wl-copy not found; cannot copy to clipboard")
             return
-        # Kill previous wl-copy if still running
+        # Kill previous wl-copy if still running (covers both copy_to_clipboard
+        # and _inject_via_clipboard procs since both store into _wl_copy_proc).
         if self._wl_copy_proc is not None:
             try:
                 self._wl_copy_proc.kill()
@@ -210,6 +211,25 @@ class YdotoolInjector(TextInjector):
             )
         except FileNotFoundError as e:
             logger.error("wl-copy error: %s", e)
+            return
+        # Poll briefly to catch immediate wl-copy failures (e.g. compositor
+        # unavailable, wrong WAYLAND_DISPLAY).  These fail silently otherwise
+        # because Popen succeeds but wl-copy exits before serving any paste.
+        time.sleep(0.1)
+        ret = self._wl_copy_proc.poll()
+        if ret is not None:
+            stderr_bytes = (
+                self._wl_copy_proc.stderr.read()
+                if self._wl_copy_proc.stderr
+                else b""
+            )
+            err = stderr_bytes.decode(errors="replace").strip()
+            logger.error(
+                "wl-copy exited immediately (rc=%d)%s",
+                ret,
+                f": {err}" if err else "",
+            )
+            self._wl_copy_proc = None
 
     def _inject_via_ydotool_raw(self, text: str) -> None:
         """Inject text via ydotool type without a trailing space.
@@ -281,12 +301,23 @@ class YdotoolInjector(TextInjector):
 
         logger.debug("Injecting text via clipboard: %r", text[:80])
 
+        # Kill any previous wl-copy (could be from copy_to_clipboard or a
+        # prior inject) before starting a new one.  Untracked orphans steal
+        # Wayland clipboard ownership without being cleanable later.
+        if self._wl_copy_proc is not None:
+            try:
+                self._wl_copy_proc.kill()
+            except OSError:
+                pass
+            self._wl_copy_proc = None
+
         # Write to Wayland clipboard.
         # wl-copy stays alive to serve clipboard requests; use Popen and do
         # NOT wait.  Give it 50 ms to register with the compositor before
-        # sending Ctrl+V.
+        # sending Ctrl+V.  Store in _wl_copy_proc so the next clipboard
+        # operation can clean it up properly.
         try:
-            proc = subprocess.Popen(
+            self._wl_copy_proc = subprocess.Popen(
                 [self._wl_copy_path, "--", text],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
