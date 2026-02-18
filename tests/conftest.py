@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import os
+
 import pytest
 
 from murmur.config import (
+    CONFIG_FILE,
     DictationConfig,
     FeedbackConfig,
     HotkeyConfig,
@@ -79,3 +83,36 @@ def mock_feedback_config() -> FeedbackConfig:
     return FeedbackConfig(
         audio_enabled=False,
     )
+
+
+def _load_real_api_key() -> str:
+    """Return the API key from env var or ~/.config/murmur/config.json.
+
+    Returns an empty string if neither source has a key.
+    """
+    key = os.environ.get("ASSEMBLYAI_API_KEY", "")
+    if key:
+        return key
+    if CONFIG_FILE.exists():
+        try:
+            data = json.loads(CONFIG_FILE.read_text())
+            key = data.get("transcriber", {}).get("api_key", "")
+        except Exception:
+            pass
+    return key
+
+
+@pytest.fixture()
+def real_api_key() -> str:
+    """Provide a real AssemblyAI API key, or skip the test.
+
+    Reads from (in order):
+      1. ASSEMBLYAI_API_KEY environment variable
+      2. ~/.config/murmur/config.json  (transcriber.api_key)
+    """
+    key = _load_real_api_key()
+    if not key:
+        pytest.skip(
+            "No API key found — set ASSEMBLYAI_API_KEY or run ./config-api-key.sh"
+        )
+    return key
