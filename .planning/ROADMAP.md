@@ -77,7 +77,7 @@ Phases execute in numeric order: 1 → 2 → 3
 | 1. Foundation | 3/3 | Complete | 2026-02-17 |
 | 2. Reliability | 3/3 | Complete | 2026-02-17 |
 | 3. UX | 0/2 | Not started | - |
-| 4. Interaction Polish | 0/? | Not started | - |
+| 4. Interaction Polish | 0/3 | Not started | - |
 
 ### Phase 4: Interaction Polish
 **Goal**: Dictation feels responsive and polished — keys don't leak, text appears live, audio confirms state, and the tray works on Sway
@@ -88,7 +88,9 @@ Phases execute in numeric order: 1 → 2 → 3
   3. Audible beeps play on recording start and stop (PyAudio output works under PipeWire/Sway)
   4. A toggle mode exists: one keypress starts recording, a second keypress stops it
   5. A tray indicator is visible in swaybar (or waybar) showing idle/recording/error state
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 4 to break down)
+- [ ] 04-01-PLAN.md — Multi-binding hotkey config and grab-and-forward input passthrough
+- [ ] 04-02-PLAN.md — SNI tray backend for Sway/waybar via Gio.DBus
+- [ ] 04-03-PLAN.md — Delta partial transcript injection and audio feedback visibility upgrade
