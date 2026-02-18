@@ -93,8 +93,13 @@ def _rgba_to_argb32(img: Any) -> bytes:
 class SniTray:
     """StatusNotifierItem tray backend via Gio.DBus for Sway/waybar."""
 
-    def __init__(self, on_quit: Callable[[], None] | None) -> None:
+    def __init__(
+        self,
+        on_quit: Callable[[], None] | None,
+        on_activate: Callable[[], None] | None = None,
+    ) -> None:
         self._on_quit = on_quit
+        self._on_activate = on_activate
         self._state = "idle"
         self._conn: Any = None
         self._owner_id: int = 0
@@ -174,10 +179,15 @@ class SniTray:
         params: Any,
         invocation: Any,
     ) -> None:
-        """Handle D-Bus method calls (Activate, ContextMenu)."""
+        """Handle D-Bus method calls (Activate, ContextMenu).
+
+        Activate (left-click) toggles recording.
+        ContextMenu (right-click) is reserved for future menu support.
+        """
         method_name: str = str(method)
-        if method_name == "Activate" and self._on_quit is not None:
-            self._on_quit()
+        logger.debug("SNI method called: %s", method_name)
+        if method_name == "Activate" and self._on_activate is not None:
+            self._on_activate()
         invocation.return_value(None)
 
     def _handle_get_property(

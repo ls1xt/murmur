@@ -23,9 +23,9 @@ sys.exit(0 if data.get('transcriber', {}).get('api_key') else 1)
 fi
 $api_key_set || fail "No API key configured. Run: ./config-api-key.sh"
 
-# Check PyAudio initializes without crashing (catches e.g. missing pipewire-alsa)
-if ! "$SCRIPT_DIR/.venv/bin/python" -c "import pyaudio; p = pyaudio.PyAudio(); p.terminate()" &>/dev/null; then
-    fail "PyAudio failed to initialize (audio system may be misconfigured).\n  On PipeWire systems: sudo pacman -S pipewire-alsa (or distro equivalent)"
+# Check sounddevice can query an input device
+if ! "$SCRIPT_DIR/.venv/bin/python" -c "import sounddevice; sounddevice.query_devices(kind='input')" &>/dev/null; then
+    fail "No audio input device found. Check your microphone and audio system configuration."
 fi
 
 # Check input group

@@ -14,7 +14,7 @@ import queue
 import threading
 from typing import Any, Iterator
 
-import pyaudio as _pyaudio  # type: ignore[import-untyped]  # noqa: N812
+import sounddevice as _sd  # type: ignore[import-untyped]
 
 from murmur.config import TranscriberConfig
 from murmur.errors import fatal_from_thread
@@ -22,50 +22,78 @@ from murmur.transcriber.base import Transcriber
 
 logger = logging.getLogger(__name__)
 
+
+def _rms_level(data: bytes) -> float:
+    """Compute RMS audio level from PCM s16le bytes."""
+    import struct as _struct
+
+    n = len(data) // 2
+    if n == 0:
+        return 0.0
+    samples = _struct.unpack(f"<{n}h", data)
+    return (sum(s * s for s in samples) / n) ** 0.5
+
 # Import the v3 streaming submodule (can't use aai.streaming.v3 at runtime).
 _v3: Any = importlib.import_module("assemblyai.streaming.v3")
 
 
 class _CallbackMicStream:
-    """Thread-safe microphone stream using PyAudio callback mode.
+    """Thread-safe microphone stream using sounddevice (PortAudio).
 
-    The SDK's ``MicrophoneStream`` uses blocking ``stream.read()`` which
-    segfaults when ``close()`` is called from another thread (PortAudio
-    does not support concurrent ``Pa_ReadStream`` / ``Pa_CloseStream``).
-
-    This implementation uses callback mode instead: PortAudio pushes audio
-    into a ``queue.Queue`` from its own thread, and ``__next__`` reads from
-    that queue.  ``close()`` is safe to call from any thread because it
-    never races with a native read call.
+    Uses ``sounddevice.RawInputStream`` in callback mode which works
+    reliably with PipeWire, PulseAudio, and ALSA.  Audio chunks are
+    pushed into a ``queue.Queue`` and consumed via ``__next__``.
+    ``close()`` is safe to call from any thread.
     """
 
     def __init__(self, sample_rate: int = 16_000) -> None:
         self._sample_rate = sample_rate
-        self._chunk_size = int(sample_rate * 0.1)
+        self._chunk_size = int(sample_rate * 0.1)  # 100ms chunks
         self._buf: queue.Queue[bytes | None] = queue.Queue()
         self._closed = threading.Event()
+        self._chunk_count = 0
 
-        self._pa = _pyaudio.PyAudio()
-        self._stream: Any = self._pa.open(
-            format=_pyaudio.paInt16,
+        # Log the default input device
+        try:
+            dev_info: Any = _sd.query_devices(kind="input")
+            logger.info(
+                "Mic device: %s (index=%s, channels=%s, rate=%s)",
+                dev_info.get("name", "unknown"),
+                dev_info.get("index", "?"),
+                dev_info.get("max_input_channels", "?"),
+                dev_info.get("default_samplerate", "?"),
+            )
+        except Exception as e:
+            logger.warning("Could not query input device: %s", e)
+
+        self._stream: Any = _sd.RawInputStream(
+            samplerate=sample_rate,
             channels=1,
-            rate=sample_rate,
-            input=True,
-            frames_per_buffer=self._chunk_size,
-            stream_callback=self._callback,
+            dtype="int16",
+            blocksize=self._chunk_size,
+            callback=self._callback,
         )
+        self._stream.start()
 
     def _callback(
         self,
-        in_data: bytes | None,
-        frame_count: int,  # noqa: ARG002
+        indata: bytes,
+        frames: int,  # noqa: ARG002
         time_info: Any,  # noqa: ARG002
-        status_flags: int,  # noqa: ARG002
-    ) -> tuple[None, int]:
+        status: Any,  # noqa: ARG002
+    ) -> None:
         if self._closed.is_set():
-            return (None, _pyaudio.paComplete)
-        self._buf.put(in_data)
-        return (None, _pyaudio.paContinue)
+            return
+        data = bytes(indata)
+        self._buf.put(data)
+        self._chunk_count += 1
+        # Log audio level every ~1s (10 chunks at 100ms each)
+        if self._chunk_count % 10 == 1:
+            rms = _rms_level(data)
+            logger.info(
+                "Mic audio chunk #%d: %d bytes, RMS=%.0f",
+                self._chunk_count, len(data), rms,
+            )
 
     def __iter__(self) -> Iterator[bytes]:
         return self
@@ -84,17 +112,15 @@ class _CallbackMicStream:
         return data
 
     def close(self) -> None:
-        """Signal the callback to stop, then tear down PortAudio resources."""
+        """Stop the stream and release resources."""
         if self._closed.is_set():
             return
         self._closed.set()
         self._buf.put(None)  # unblock any waiting __next__
         with contextlib.suppress(Exception):
-            self._stream.stop_stream()
+            self._stream.stop()
         with contextlib.suppress(Exception):
             self._stream.close()
-        with contextlib.suppress(Exception):
-            self._pa.terminate()
 
 
 class AssemblyAITranscriber(Transcriber):
@@ -116,8 +142,13 @@ class AssemblyAITranscriber(Transcriber):
         self._client: Any = None
         self._mic_stream: Any = None
         self._stream_thread: threading.Thread | None = None
-        self._current_turn_text = ""
         self._all_text_this_session: list[str] = []
+        # Generation counter: incremented on each start() so stale callbacks
+        # from a previous session don't trigger fatal errors.
+        self._session_gen: int = 0
+        # Cleared at stop() start, set at stop() end so start() can wait.
+        self._stop_done = threading.Event()
+        self._stop_done.set()
 
     def start(self) -> None:
         """Start mic capture and streaming to AssemblyAI."""
@@ -125,9 +156,15 @@ class AssemblyAITranscriber(Transcriber):
             logger.warning("Already streaming")
             return
 
+        # Wait for any in-progress stop() to finish before opening a new
+        # session -- prevents "Too many concurrent sessions" from AssemblyAI.
+        if not self._stop_done.wait(timeout=5.0):
+            logger.warning("Previous session did not stop cleanly; starting anyway")
+
         self._is_streaming = True
-        self._current_turn_text = ""
         self._all_text_this_session = []
+        self._session_gen += 1
+        my_gen = self._session_gen
 
         self._client = _v3.StreamingClient(
             _v3.StreamingClientOptions(
@@ -139,18 +176,33 @@ class AssemblyAITranscriber(Transcriber):
         events: Any = _v3.StreamingEvents
         self._client.on(events.Begin, self._on_begin)
         self._client.on(events.Turn, self._on_turn)
-        self._client.on(events.Termination, self._on_terminated)
-        self._client.on(events.Error, self._on_stream_error)
+        # Bind with generation captured now so stale callbacks from old
+        # sessions are silently ignored rather than crashing the daemon.
+        self._client.on(
+            events.Termination,
+            lambda c, e, g=my_gen: self._on_terminated(c, e, g),
+        )
+        self._client.on(
+            events.Error,
+            lambda c, e, g=my_gen: self._on_stream_error(c, e, g),
+        )
 
         params: Any = _v3.StreamingParameters(
             sample_rate=self._config.sample_rate,
             format_turns=self._config.format_turns,
+            encoding=_v3.Encoding.pcm_s16le,
+        )
+        logger.info(
+            "StreamingParameters: sample_rate=%d, format_turns=%s, encoding=%s",
+            self._config.sample_rate,
+            self._config.format_turns,
+            "pcm_s16le",
         )
         self._client.connect(params)
 
         self._stream_thread = threading.Thread(target=self._stream_audio, daemon=True)
         self._stream_thread.start()
-        logger.info("AssemblyAI streaming session started")
+        logger.info("AssemblyAI streaming session started (gen=%d)", my_gen)
 
     def _stream_audio(self) -> None:
         """Stream microphone audio to AssemblyAI (runs in background thread)."""
@@ -158,10 +210,12 @@ class AssemblyAITranscriber(Transcriber):
             self._mic_stream = _CallbackMicStream(
                 sample_rate=self._config.sample_rate
             )
+            logger.info("Mic stream opened, starting audio stream to AssemblyAI")
             client: Any = self._client
             mic: Any = self._mic_stream
             if client is not None:
                 client.stream(mic)
+            logger.info("Audio stream ended")
         except Exception as e:
             if self._is_streaming:
                 logger.error("Audio stream error: %s", e)
@@ -173,6 +227,7 @@ class AssemblyAITranscriber(Transcriber):
         if not self._is_streaming:
             return
 
+        self._stop_done.clear()
         self._is_streaming = False
         logger.info("Stopping AssemblyAI streaming session...")
 
@@ -197,6 +252,7 @@ class AssemblyAITranscriber(Transcriber):
             logger.info("Session ended, final text: %s", full_text)
 
         logger.info("AssemblyAI streaming session stopped")
+        self._stop_done.set()
 
     # -- Event handlers (called from the SDK's internal thread) --
 
@@ -211,39 +267,59 @@ class AssemblyAITranscriber(Transcriber):
         is_end_of_turn: bool = bool(event.end_of_turn)
         is_formatted: bool = bool(event.turn_is_formatted)
 
-        logger.debug(
-            "Turn event: text=%r end_of_turn=%s formatted=%s",
-            transcript,
+        logger.info(
+            "Turn event: end_of_turn=%s formatted=%s text=%r",
             is_end_of_turn,
             is_formatted,
+            transcript[:120] if transcript else "",
         )
 
         if not transcript:
+            logger.debug("Turn event had empty transcript, skipping")
             return
 
         if self._on_partial and not is_end_of_turn:
+            logger.info("Dispatching partial: %r", transcript[:120])
             self._on_partial(transcript)
 
         if is_end_of_turn and (is_formatted or not self._config.format_turns):
             self._all_text_this_session.append(transcript)
+            logger.info("Dispatching final: %r", transcript[:120])
             if self._on_final:
                 self._on_final(transcript)
+        elif is_end_of_turn and not is_formatted:
+            logger.info(
+                "End of turn but waiting for formatted version (format_turns=%s)",
+                self._config.format_turns,
+            )
 
-    def _on_terminated(self, client: Any, event: Any) -> None:
+    def _on_terminated(self, client: Any, event: Any, gen: int) -> None:
         """Handle streaming session termination event.
 
         Normal termination (after stop()) logs and returns.
+        Stale callbacks from a previous session (gen mismatch) are ignored.
         Unexpected termination (while still streaming) exits the daemon.
         """
         duration: float = float(event.audio_duration_seconds)
-        logger.info("Session terminated: %.1fs audio processed", duration)
+        logger.info("Session terminated: %.1fs audio processed (gen=%d)", duration, gen)
+
+        if gen != self._session_gen:
+            logger.debug("Ignoring stale termination for gen=%d (current=%d)", gen, self._session_gen)
+            return
 
         if self._is_streaming:
             # Unexpected termination -- we didn't call stop()
             fatal_from_thread("WebSocket connection lost unexpectedly")
 
-    def _on_stream_error(self, client: Any, error: Any) -> None:
-        """Handle streaming error -- exit immediately per user decision."""
+    def _on_stream_error(self, client: Any, error: Any, gen: int) -> None:
+        """Handle streaming error.
+
+        Stale callbacks from a previous session (gen mismatch) are ignored.
+        """
+        if gen != self._session_gen:
+            logger.debug("Ignoring stale error for gen=%d (current=%d): %s", gen, self._session_gen, error)
+            return
+
         error_str = str(error)
 
         # Classify error codes for user-friendly messages

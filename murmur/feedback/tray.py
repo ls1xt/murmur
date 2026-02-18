@@ -60,8 +60,13 @@ class TrayIcon:
     if neither backend is available -- all methods become no-ops.
     """
 
-    def __init__(self, on_quit: Callable[[], None] | None = None) -> None:
+    def __init__(
+        self,
+        on_quit: Callable[[], None] | None = None,
+        on_activate: Callable[[], None] | None = None,
+    ) -> None:
         self._on_quit = on_quit
+        self._on_activate = on_activate
         self._icon: Any = None
         self._sni: Any = None
         self._use_sni = False
@@ -128,7 +133,7 @@ class TrayIcon:
         try:
             from murmur.feedback.sni import SniTray
 
-            self._sni = SniTray(on_quit=self._on_quit)
+            self._sni = SniTray(on_quit=self._on_quit, on_activate=self._on_activate)
             self._sni.start()
             self._use_sni = True
             self._available = True

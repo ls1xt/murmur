@@ -51,7 +51,10 @@ class DictationApp:
         self.injector: TextInjector = create_injector(config.injector)
         self.feedback = AudioFeedback(enabled=config.feedback.audio_enabled)
         self.notifier = Notifier(level=config.notify.level)
-        self.tray = TrayIcon(on_quit=self._request_shutdown)
+        self.tray = TrayIcon(
+            on_quit=self._request_shutdown,
+            on_activate=self._on_tray_activate,
+        )
 
         self.hotkey.set_callbacks(
             on_activate=self._on_activate,
@@ -93,7 +96,7 @@ class DictationApp:
         When AssemblyAI appends words, only the new suffix is injected.
         When text diverges, the old partial is backspaced and new text typed.
         """
-        logger.debug("Partial: %s", text)
+        logger.info("Partial transcript received: %r (last_partial=%r)", text[:120], self._last_partial[:80])
         if not text:
             return
         with self._inject_lock:
@@ -101,9 +104,17 @@ class DictationApp:
                 # Common case: AssemblyAI appended words
                 suffix = text[len(self._last_partial) :]
                 if suffix:
+                    logger.info("Injecting delta suffix: %r", suffix[:80])
                     self.injector.inject_raw(suffix)
+                else:
+                    logger.debug("Partial unchanged, no delta to inject")
             else:
                 # Diverged: backspace the old partial, type new text
+                logger.info(
+                    "Partial diverged: backspace %d chars, inject %r",
+                    len(self._last_partial),
+                    text[:80],
+                )
                 if self._last_partial:
                     self.injector.inject_backspaces(
                         len(self._last_partial)
@@ -117,16 +128,19 @@ class DictationApp:
         Backspaces the partial text first, then injects the final formatted
         text. Serialized via _inject_lock to prevent races with partials.
         """
+        logger.info("Final transcript received: %r (last_partial=%r)", text[:120], self._last_partial[:80])
         with self._inject_lock:
             # Backspace the partial first
             if self._last_partial:
+                logger.info("Backspacing %d partial chars before final inject", len(self._last_partial))
                 self.injector.inject_backspaces(
                     len(self._last_partial)
                 )
                 self._last_partial = ""
             if not text.strip():
+                logger.info("Final text was empty/whitespace, skipping injection")
                 return
-            logger.info("Injecting: %s", text)
+            logger.info("Injecting final: %s", text)
             try:
                 self.injector.inject(text)
             except Exception as e:
@@ -174,6 +188,13 @@ class DictationApp:
 
         self._stop_event.wait()
         self.shutdown()
+
+    def _on_tray_activate(self) -> None:
+        """Handle tray icon left-click: toggle recording on/off."""
+        if self.transcriber.is_streaming:
+            self._on_deactivate()
+        else:
+            self._on_activate()
 
     def _request_shutdown(self) -> None:
         """Request daemon shutdown (e.g., from tray Quit menu)."""

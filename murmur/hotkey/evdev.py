@@ -47,11 +47,24 @@ def _list_devices() -> list[str]:
 
 
 def find_keyboard_devices() -> list[str]:
-    """Auto-detect keyboard input devices."""
+    """Auto-detect physical keyboard input devices.
+
+    Skips virtual/uinput devices (phys == "") to avoid grabbing the
+    ydotoold injection device, which would intercept our own injected
+    keystrokes and produce garbage output.
+    """
     keyboards: list[str] = []
     for path_str in _list_devices():
         try:
             dev: Any = _open_device(path_str)
+            # Skip virtual devices: real keyboards have a non-empty phys path
+            # (e.g. "usb-0000:00:14.0-1/input0"). uinput devices have phys="".
+            phys: str = str(dev.phys or "")  # type: ignore[reportUnknownMemberType]
+            if not phys:
+                dev_name_skip: str = str(dev.name)  # type: ignore[reportUnknownMemberType]
+                logger.debug("Skipping virtual device: %s (%s)", dev_name_skip, path_str)
+                dev.close()  # type: ignore[reportUnknownMemberType]
+                continue
             caps: dict[int, list[int]] = dev.capabilities(  # type: ignore[reportUnknownMemberType]
                 verbose=False
             )
