@@ -1,0 +1,18 @@
+[Unit]
+Description=Murmur voice dictation daemon
+Documentation=file://%h/dev/python/murmur/README.md
+After=graphical-session.target sound.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/dev/python/murmur/.venv/bin/murmur
+Restart=on-failure
+RestartSec=3
+
+# Pass through display/audio environment from the user session
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+PassEnvironment=DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS PULSE_SERVER
+
+[Install]
+WantedBy=graphical-session.target
