@@ -31,6 +31,12 @@ class CapturingInjector(TextInjector):
     def inject(self, text: str) -> None:
         self.injected.append(text)
 
+    def inject_raw(self, text: str) -> None:
+        self.injected.append(text)
+
+    def inject_backspaces(self, count: int) -> None:
+        pass
+
     def is_available(self) -> bool:
         return True
 
@@ -97,7 +103,7 @@ class TestE2ETranscription:
 
     def test_no_fatal_errors_during_session(self, real_api_key: str, mocker: Any) -> None:
         """No fatal errors occur during a normal activate → deactivate cycle."""
-        app, transcriber, injector = _make_app(real_api_key, mocker)
+        app, transcriber, _injector = _make_app(real_api_key, mocker)
         from murmur.transcriber import assemblyai as _aai_mod
 
         app._on_activate()
@@ -110,7 +116,7 @@ class TestE2ETranscription:
 
     def test_sequential_sessions(self, real_api_key: str, mocker: Any) -> None:
         """Two consecutive activate/deactivate cycles both complete cleanly."""
-        app, transcriber, injector = _make_app(real_api_key, mocker)
+        app, transcriber, _injector = _make_app(real_api_key, mocker)
 
         for _ in range(2):
             app._on_activate()

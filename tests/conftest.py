@@ -11,6 +11,7 @@ from murmur.config import (
     CONFIG_FILE,
     DictationConfig,
     FeedbackConfig,
+    HotkeyBinding,
     HotkeyConfig,
     InjectorConfig,
     TranscriberConfig,
@@ -52,10 +53,14 @@ def default_config() -> DictationConfig:
 def mock_hotkey_config() -> HotkeyConfig:
     """Return a HotkeyConfig suitable for testing."""
     return HotkeyConfig(
+        bindings=[
+            HotkeyBinding(
+                modifiers=["KEY_LEFTCTRL", "KEY_LEFTSHIFT"],
+                trigger="KEY_SPACE",
+                action="push_to_talk",
+            ),
+        ],
         backend="evdev",
-        modifiers=["KEY_LEFTCTRL", "KEY_LEFTSHIFT"],
-        trigger="KEY_SPACE",
-        mode="push_to_talk",
     )
 
 

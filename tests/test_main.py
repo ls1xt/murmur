@@ -6,12 +6,9 @@ backends, verifying that sequential recordings work without crashes.
 
 from __future__ import annotations
 
-import threading
 import time
 from typing import Any
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from murmur.config import DictationConfig, FeedbackConfig, TrayConfig
 from murmur.main import DictationApp
@@ -143,7 +140,7 @@ class TestDictationAppLifecycle:
         """Three activate/deactivate cycles must all complete without error."""
         app, transcriber, _, _ = _make_app(mocker)
 
-        for i in range(3):
+        for _ in range(3):
             transcriber.is_streaming = False
             app._on_activate()
             time.sleep(0.05)
