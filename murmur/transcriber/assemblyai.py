@@ -187,16 +187,20 @@ class AssemblyAITranscriber(Transcriber):
             lambda c, e, g=my_gen: self._on_stream_error(c, e, g),
         )
 
-        params: Any = _v3.StreamingParameters(
-            sample_rate=self._config.sample_rate,
-            format_turns=self._config.format_turns,
-            encoding=_v3.Encoding.pcm_s16le,
-        )
+        params_kwargs: dict[str, Any] = {
+            "sample_rate": self._config.sample_rate,
+            "format_turns": self._config.format_turns,
+            "encoding": _v3.Encoding.pcm_s16le,
+        }
+        if self._config.keyterms_prompt:
+            params_kwargs["keyterms_prompt"] = self._config.keyterms_prompt
+        params: Any = _v3.StreamingParameters(**params_kwargs)
         logger.info(
-            "StreamingParameters: sample_rate=%d, format_turns=%s, encoding=%s",
+            "StreamingParameters: sample_rate=%d, format_turns=%s, encoding=%s, keyterms=%s",
             self._config.sample_rate,
             self._config.format_turns,
             "pcm_s16le",
+            self._config.keyterms_prompt or [],
         )
         # Open the mic stream BEFORE connecting so that audio captured during
         # the WebSocket handshake (~200-500 ms) is buffered in the queue and
