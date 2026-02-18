@@ -85,12 +85,59 @@ class TestDictationAppLifecycle:
 
         injector.inject.assert_called_once_with("Hello world.")
 
+    def test_final_transcript_backspaces_partial_first(
+        self, mocker: Any
+    ) -> None:
+        app, _, injector, _ = _make_app(mocker)
+
+        # Simulate a partial was previously injected
+        app._last_partial = "Hello"
+        app._on_final_transcript("Hello world.")
+
+        injector.inject_backspaces.assert_called_once_with(5)
+        injector.inject.assert_called_once_with("Hello world.")
+        assert app._last_partial == ""
+
     def test_blank_transcript_not_injected(self, mocker: Any) -> None:
         app, _, injector, _ = _make_app(mocker)
 
         app._on_final_transcript("   ")
 
         injector.inject.assert_not_called()
+
+    def test_partial_transcript_inject_raw(self, mocker: Any) -> None:
+        app, _, injector, _ = _make_app(mocker)
+
+        app._on_partial_transcript("Hello")
+        injector.inject_raw.assert_called_once_with("Hello")
+        assert app._last_partial == "Hello"
+
+    def test_partial_transcript_delta_suffix(self, mocker: Any) -> None:
+        app, _, injector, _ = _make_app(mocker)
+
+        app._on_partial_transcript("Hello")
+        app._on_partial_transcript("Hello world")
+
+        # Second call should only inject the suffix
+        assert injector.inject_raw.call_count == 2
+        assert injector.inject_raw.call_args_list[1][0][0] == " world"
+
+    def test_partial_transcript_diverged(self, mocker: Any) -> None:
+        app, _, injector, _ = _make_app(mocker)
+
+        app._on_partial_transcript("Hello")
+        injector.inject_raw.reset_mock()
+
+        # Diverge: new text doesn't start with old
+        app._on_partial_transcript("Hey there")
+        injector.inject_backspaces.assert_called_once_with(5)
+        injector.inject_raw.assert_called_once_with("Hey there")
+
+    def test_partial_empty_is_noop(self, mocker: Any) -> None:
+        app, _, injector, _ = _make_app(mocker)
+
+        app._on_partial_transcript("")
+        injector.inject_raw.assert_not_called()
 
     def test_sequential_recordings(self, mocker: Any) -> None:
         """Three activate/deactivate cycles must all complete without error."""

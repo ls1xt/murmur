@@ -42,7 +42,9 @@ class DictationApp:
         self.config = config
         self._running = False
         self._lock = threading.Lock()
+        self._inject_lock = threading.Lock()
         self._stop_event = threading.Event()
+        self._last_partial: str = ""
 
         self.hotkey: HotkeyListener = create_hotkey_listener(config.hotkey)
         self.transcriber: Transcriber = create_transcriber(config.transcriber)
@@ -81,22 +83,54 @@ class DictationApp:
         self.feedback.play_stop()
         self.notifier.info("Recording stopped")
         self.tray.set_state("idle")
+        self._last_partial = ""
         threading.Thread(target=self.transcriber.stop, daemon=True).start()
 
     def _on_partial_transcript(self, text: str) -> None:
-        """Called with intermediate (partial) transcript text."""
+        """Called with intermediate (partial) transcript text.
+
+        Injects the delta between the previous partial and the new one.
+        When AssemblyAI appends words, only the new suffix is injected.
+        When text diverges, the old partial is backspaced and new text typed.
+        """
         logger.debug("Partial: %s", text)
+        if not text:
+            return
+        with self._inject_lock:
+            if text.startswith(self._last_partial):
+                # Common case: AssemblyAI appended words
+                suffix = text[len(self._last_partial) :]
+                if suffix:
+                    self.injector.inject_raw(suffix)
+            else:
+                # Diverged: backspace the old partial, type new text
+                if self._last_partial:
+                    self.injector.inject_backspaces(
+                        len(self._last_partial)
+                    )
+                self.injector.inject_raw(text)
+            self._last_partial = text
 
     def _on_final_transcript(self, text: str) -> None:
-        """Called with finalized turn text -- inject it into the active app."""
-        if not text.strip():
-            return
+        """Called with finalized turn text -- inject it into the active app.
 
-        logger.info("Injecting: %s", text)
-        try:
-            self.injector.inject(text)
-        except Exception as e:
-            logger.error("Text injection failed: %s", e)
+        Backspaces the partial text first, then injects the final formatted
+        text. Serialized via _inject_lock to prevent races with partials.
+        """
+        with self._inject_lock:
+            # Backspace the partial first
+            if self._last_partial:
+                self.injector.inject_backspaces(
+                    len(self._last_partial)
+                )
+                self._last_partial = ""
+            if not text.strip():
+                return
+            logger.info("Injecting: %s", text)
+            try:
+                self.injector.inject(text)
+            except Exception as e:
+                logger.error("Text injection failed: %s", e)
 
     def _on_transcriber_error(self, error: Exception) -> None:
         """Called when the transcriber encounters an error."""

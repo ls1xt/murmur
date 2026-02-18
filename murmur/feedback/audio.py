@@ -36,7 +36,9 @@ def _get_pa() -> Any:
     try:
         _pa_instance = _pyaudio_module.PyAudio()
     except Exception as e:
-        logger.debug("PyAudio init failed: %s", e)
+        logger.warning(
+            "PyAudio init failed (audio feedback unavailable): %s", e
+        )
     return _pa_instance
 
 
@@ -95,4 +97,8 @@ class AudioFeedback:
                     stream.stop_stream()
                     stream.close()
             except Exception as e:
-                logger.debug("Audio feedback error: %s", e)
+                if not getattr(AudioFeedback, "_audio_warned", False):
+                    logger.warning("Audio feedback error: %s", e)
+                    AudioFeedback._audio_warned = True  # type: ignore[attr-defined]
+                else:
+                    logger.debug("Audio feedback error: %s", e)

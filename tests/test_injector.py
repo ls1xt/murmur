@@ -103,6 +103,82 @@ class TestYdotoolInjector:
         assert injector.is_available() is False
 
 
+class TestInjectRawAndBackspaces:
+    """Test inject_raw and inject_backspaces methods."""
+
+    def test_inject_raw_calls_ydotool(self, mocker: Any) -> None:
+        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
+        mock_run.return_value = MagicMock(returncode=0)
+        _mock_which(mocker)
+
+        injector = YdotoolInjector()
+        injector.inject_raw("hello")
+
+        mock_run.assert_called_once()
+        args: list[str] = mock_run.call_args[0][0]
+        assert "ydotool" in args[0]
+        assert "type" in args
+        assert "--clearmodifiers" in args
+        assert "hello" in args
+
+    def test_inject_raw_no_trailing_space(self, mocker: Any) -> None:
+        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
+        mock_run.return_value = MagicMock(returncode=0)
+        _mock_which(mocker)
+
+        injector = YdotoolInjector(trailing_space=True)
+        injector.inject_raw("hello")
+
+        args: list[str] = mock_run.call_args[0][0]
+        # inject_raw should NOT add trailing space
+        assert "hello" in args
+        assert "hello " not in args
+
+    def test_inject_raw_empty_noop(self, mocker: Any) -> None:
+        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
+        _mock_which(mocker)
+
+        injector = YdotoolInjector()
+        injector.inject_raw("")
+
+        mock_run.assert_not_called()
+
+    def test_inject_backspaces_calls_ydotool_key(
+        self, mocker: Any
+    ) -> None:
+        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
+        mock_run.return_value = MagicMock(returncode=0)
+        _mock_which(mocker)
+
+        injector = YdotoolInjector()
+        injector.inject_backspaces(3)
+
+        mock_run.assert_called_once()
+        args: list[str] = mock_run.call_args[0][0]
+        assert "key" in args
+        # 3 backspaces = 3 pairs of 14:1/14:0
+        assert args.count("14:1") == 3
+        assert args.count("14:0") == 3
+
+    def test_inject_backspaces_zero_noop(self, mocker: Any) -> None:
+        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
+        _mock_which(mocker)
+
+        injector = YdotoolInjector()
+        injector.inject_backspaces(0)
+
+        mock_run.assert_not_called()
+
+    def test_inject_backspaces_negative_noop(self, mocker: Any) -> None:
+        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
+        _mock_which(mocker)
+
+        injector = YdotoolInjector()
+        injector.inject_backspaces(-1)
+
+        mock_run.assert_not_called()
+
+
 class TestClipboardStrategy:
     """Test clipboard injection strategy."""
 

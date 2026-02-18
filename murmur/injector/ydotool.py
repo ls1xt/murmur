@@ -94,6 +94,69 @@ class YdotoolInjector(TextInjector):
             # "ydotool" strategy (default fallback)
             self._inject_via_ydotool(text)
 
+    def inject_raw(self, text: str) -> None:
+        """Inject text directly without trailing space or strategy routing.
+
+        Used for partial transcripts that are mid-sentence.
+        """
+        if not text:
+            return
+
+        logger.debug("Injecting raw partial: %r", text[:80])
+
+        cmd = [self._ydotool_path, "type", "--clearmodifiers", "--", text]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                logger.error(
+                    "ydotool raw inject failed (rc=%d): %s",
+                    result.returncode,
+                    result.stderr.strip(),
+                )
+        except subprocess.TimeoutExpired:
+            logger.error("ydotool raw inject timed out")
+        except FileNotFoundError:
+            logger.error("ydotool not found at %s", self._ydotool_path)
+
+    def inject_backspaces(self, count: int) -> None:
+        """Inject N backspace keypresses to erase previous text.
+
+        Uses ydotool key with keycode 14 (KEY_BACKSPACE).
+        """
+        if count <= 0:
+            return
+
+        logger.debug("Injecting %d backspaces", count)
+
+        # Generate key press/release pairs for KEY_BACKSPACE (code 14)
+        key_args: list[str] = []
+        for _ in range(count):
+            key_args.extend(["14:1", "14:0"])
+
+        cmd = [self._ydotool_path, "key", *key_args]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                logger.error(
+                    "ydotool backspace failed (rc=%d): %s",
+                    result.returncode,
+                    result.stderr.strip(),
+                )
+        except subprocess.TimeoutExpired:
+            logger.error("ydotool backspace timed out")
+        except FileNotFoundError:
+            logger.error("ydotool not found at %s", self._ydotool_path)
+
     def _inject_via_ydotool(self, text: str) -> None:
         """Inject text directly via ydotool type."""
         cmd = [self._ydotool_path, "type", "--clearmodifiers"]
