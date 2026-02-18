@@ -104,7 +104,7 @@ class YdotoolInjector(TextInjector):
 
         logger.debug("Injecting raw partial: %r", text[:80])
 
-        cmd = [self._ydotool_path, "type", "--clearmodifiers", "--", text]
+        cmd = [self._ydotool_path, "type", "--clearmodifiers", "--key-delay", "0", "--key-hold", "0", "--", text]
         try:
             result = subprocess.run(
                 cmd,
@@ -138,7 +138,7 @@ class YdotoolInjector(TextInjector):
         for _ in range(count):
             key_args.extend(["14:1", "14:0"])
 
-        cmd = [self._ydotool_path, "key", *key_args]
+        cmd = [self._ydotool_path, "key", "--key-delay", "0", *key_args]
         try:
             result = subprocess.run(
                 cmd,
@@ -161,8 +161,7 @@ class YdotoolInjector(TextInjector):
         """Inject text directly via ydotool type."""
         cmd = [self._ydotool_path, "type", "--clearmodifiers"]
 
-        if self._key_delay > 0:
-            cmd.extend(["--key-delay", str(self._key_delay)])
+        cmd.extend(["--key-delay", str(self._key_delay), "--key-hold", "0"])
 
         cmd.extend(["--", text])
 
