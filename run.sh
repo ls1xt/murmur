@@ -41,8 +41,10 @@ fi
 
 # Silence PortAudio probe noise (ALSA + JACK warnings from device enumeration)
 export JACK_NO_AUDIO_RESERVATION=1
+# Force Python to use unbuffered I/O so output appears immediately when piped
+export PYTHONUNBUFFERED=1
 
-exec "$SCRIPT_DIR/.venv/bin/murmur" "$@" 2> >(grep -v \
+"$SCRIPT_DIR/.venv/bin/murmur" "$@" 2> >(grep --line-buffered -v \
     -e "^ALSA lib" \
     -e "^JACK " \
     -e "^Cannot connect to server" \
