@@ -2,7 +2,11 @@
 evdev-based hotkey listener -- works natively on Wayland.
 
 Reads keyboard events directly from /dev/input/event* devices via the Linux
-input subsystem. Requires the user to be in the 'input' group.
+input subsystem. Grabs keyboards and forwards non-hotkey events through UInput
+virtual devices so hotkey keys are suppressed while all other input passes
+through transparently.
+
+Requires the user to be in the 'input' group.
 """
 
 from __future__ import annotations
@@ -10,11 +14,13 @@ from __future__ import annotations
 import contextlib
 import logging
 import threading
+from dataclasses import dataclass
 from typing import Any
 
 import evdev  # type: ignore[import-untyped]
-from evdev import categorize, ecodes  # type: ignore[import-untyped]
+from evdev import UInput, categorize, ecodes  # type: ignore[import-untyped]
 
+from murmur.config import HotkeyBinding
 from murmur.errors import fatal_from_thread
 from murmur.hotkey.base import HotkeyListener
 
@@ -61,43 +67,64 @@ def find_keyboard_devices() -> list[str]:
     return keyboards
 
 
+@dataclass
+class _ResolvedBinding:
+    """A binding with key names resolved to evdev key codes."""
+
+    modifier_codes: set[int]
+    trigger_code: int
+    action: str
+
+
 class EvdevHotkeyListener(HotkeyListener):
     """
-    Listens for a hotkey combination using evdev.
+    Listens for hotkey combinations using evdev with grab-and-forward.
 
-    The hotkey is defined by a set of modifier key names (e.g. KEY_LEFTCTRL,
-    KEY_LEFTSHIFT) and a trigger key (e.g. KEY_SPACE). When all modifiers are
-    held and the trigger is pressed, the hotkey fires.
+    Grabs all keyboards via EVIOCGRAB, creates UInput virtual devices to
+    forward non-hotkey events, and suppresses hotkey combos. Manages
+    modifier state on hotkey fire/release so the compositor sees clean
+    modifier transitions.
     """
 
     def __init__(
         self,
-        modifiers: list[str],
-        trigger: str,
-        mode: str = "push_to_talk",
+        bindings: list[HotkeyBinding],
         device_path: str | None = None,
     ) -> None:
-        super().__init__(mode=mode)
-        self._modifier_codes: set[int] = set()
-        for name in modifiers:
-            code: int | None = _ecodes_dict.get(name)
-            if code is None:
-                raise ValueError(f"Unknown evdev key name: {name}")
-            self._modifier_codes.add(code)
+        super().__init__()
+        self._bindings: list[_ResolvedBinding] = []
+        self._all_modifier_codes: set[int] = set()
 
-        trigger_code: int | None = _ecodes_dict.get(trigger)
-        if trigger_code is None:
-            raise ValueError(f"Unknown evdev key name: {trigger}")
-        self._trigger_code: int = trigger_code
+        for binding in bindings:
+            mod_codes: set[int] = set()
+            for name in binding.modifiers:
+                code: int | None = _ecodes_dict.get(name)
+                if code is None:
+                    raise ValueError(f"Unknown evdev key name: {name}")
+                mod_codes.add(code)
+
+            trigger_code: int | None = _ecodes_dict.get(binding.trigger)
+            if trigger_code is None:
+                raise ValueError(f"Unknown evdev key name: {binding.trigger}")
+
+            self._bindings.append(
+                _ResolvedBinding(
+                    modifier_codes=mod_codes,
+                    trigger_code=trigger_code,
+                    action=binding.action,
+                )
+            )
+            self._all_modifier_codes.update(mod_codes)
 
         self._device_path = device_path
-        self._devices: list[Any] = []
+        self._devices: list[tuple[Any, Any]] = []  # (physical_dev, uinput)
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._held_keys: set[int] = set()
+        self._suppressed_triggers: set[int] = set()
 
     def start(self) -> None:
-        """Start listening in a background thread."""
+        """Start listening in a background thread with grab-and-forward."""
         if self._thread and self._thread.is_alive():
             logger.warning("Hotkey listener already running")
             return
@@ -116,9 +143,11 @@ class EvdevHotkeyListener(HotkeyListener):
         for path in paths:
             try:
                 dev: Any = _open_device(path)
-                self._devices.append(dev)
+                dev.grab()  # type: ignore[reportUnknownMemberType]
+                uinput: Any = UInput.from_device(dev, name=f"murmur-{dev.name}")  # type: ignore[reportUnknownMemberType]
+                self._devices.append((dev, uinput))
                 dev_name: str = str(dev.name)  # type: ignore[reportUnknownMemberType]
-                logger.info("Listening on: %s (%s)", dev_name, path)
+                logger.info("Grabbed and forwarding: %s (%s)", dev_name, path)
             except (PermissionError, OSError) as e:
                 logger.warning("Cannot open %s: %s", path, e)
 
@@ -130,19 +159,25 @@ class EvdevHotkeyListener(HotkeyListener):
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._listen_loop, daemon=True)
         self._thread.start()
-        logger.info(
-            "evdev hotkey listener started (modifiers=%s, trigger=%s, mode=%s)",
-            [_key_names[c] for c in self._modifier_codes],
-            _key_names[self._trigger_code],
-            self.mode,
-        )
+
+        for binding in self._bindings:
+            mod_names = [_key_names.get(c, str(c)) for c in binding.modifier_codes]
+            trigger_name = _key_names.get(
+                binding.trigger_code, str(binding.trigger_code)
+            )
+            logger.info(
+                "Binding: %s+%s -> %s",
+                "+".join(mod_names),
+                trigger_name,
+                binding.action,
+            )
 
     def _listen_loop(self) -> None:
         """Main event loop -- runs in a background thread."""
         from selectors import EVENT_READ, DefaultSelector
 
         selector = DefaultSelector()
-        for dev in self._devices:
+        for dev, _uinput in self._devices:
             selector.register(dev, EVENT_READ)
 
         try:
@@ -150,19 +185,30 @@ class EvdevHotkeyListener(HotkeyListener):
                 events = selector.select(timeout=0.1)
                 for key, _ in events:
                     device: Any = key.fileobj
+                    # Find the matching uinput for this device
+                    uinput: Any = None
+                    for d, u in self._devices:
+                        if d is device:
+                            uinput = u
+                            break
                     try:
                         for event in device.read():  # type: ignore[reportUnknownMemberType]
                             ev_type: int = int(event.type)  # type: ignore[reportUnknownMemberType]
                             if ev_type == _EV_KEY:
-                                self._handle_key_event(event)
+                                self._handle_key_event(event, uinput)
+                            else:
+                                # Forward non-key events unconditionally
+                                if uinput is not None:
+                                    uinput.write_event(event)  # type: ignore[reportUnknownMemberType]
+                                    uinput.syn()  # type: ignore[reportUnknownMemberType]
                     except OSError:
                         dev_path: str = str(device.path)  # type: ignore[reportUnknownMemberType]
                         fatal_from_thread(f"Input device disconnected: {dev_path}")
         finally:
             selector.close()
 
-    def _handle_key_event(self, event: Any) -> None:
-        """Process a single key event."""
+    def _handle_key_event(self, event: Any, uinput: Any) -> None:
+        """Process a single key event with grab-and-forward logic."""
         key_event: Any = categorize(event)  # type: ignore[reportUnknownVariableType]
         code: int = int(event.code)  # type: ignore[reportUnknownArgumentType]
         keystate: int = int(key_event.keystate)  # type: ignore[reportUnknownMemberType]
@@ -170,14 +216,89 @@ class EvdevHotkeyListener(HotkeyListener):
         # keystate: 0=up, 1=down, 2=hold/repeat
         if keystate == 1:  # Key down
             self._held_keys.add(code)
-            if code == self._trigger_code and self._modifier_codes.issubset(
-                self._held_keys
-            ):
-                self._handle_hotkey_press()
+
+            # Check all bindings for a match
+            matched_binding: _ResolvedBinding | None = None
+            for binding in self._bindings:
+                if (
+                    code == binding.trigger_code
+                    and binding.modifier_codes.issubset(self._held_keys)
+                ):
+                    matched_binding = binding
+                    break
+
+            if matched_binding is not None:
+                # Suppress the trigger key
+                self._suppressed_triggers.add(code)
+
+                # Release modifiers in UInput so compositor sees clean state
+                if uinput is not None:
+                    for mod_code in matched_binding.modifier_codes:
+                        if mod_code in self._held_keys:
+                            uinput.write(  # type: ignore[reportUnknownMemberType]
+                                _EV_KEY, mod_code, 0
+                            )
+                    uinput.syn()  # type: ignore[reportUnknownMemberType]
+
+                self._dispatch_action(matched_binding.action)
+            else:
+                # Not a hotkey -- forward the event
+                if uinput is not None:
+                    uinput.write_event(event)  # type: ignore[reportUnknownMemberType]
+                    uinput.syn()  # type: ignore[reportUnknownMemberType]
+
         elif keystate == 0:  # Key up
             self._held_keys.discard(code)
-            if code == self._trigger_code:
-                self._handle_hotkey_release()
+
+            if code in self._suppressed_triggers:
+                # This trigger was suppressed -- dispatch release, don't forward
+                self._suppressed_triggers.discard(code)
+
+                # Find which binding this trigger belongs to
+                released_binding: _ResolvedBinding | None = None
+                for binding in self._bindings:
+                    if code == binding.trigger_code:
+                        released_binding = binding
+                        break
+
+                if released_binding is not None:
+                    self._dispatch_release(released_binding.action)
+
+                    # Restore modifiers: re-press those physically held
+                    if uinput is not None:
+                        for mod_code in released_binding.modifier_codes:
+                            if mod_code in self._held_keys:
+                                uinput.write(  # type: ignore[reportUnknownMemberType]
+                                    _EV_KEY, mod_code, 1
+                                )
+                        uinput.syn()  # type: ignore[reportUnknownMemberType]
+            elif (
+                code in self._all_modifier_codes
+                and self._suppressed_triggers
+            ):
+                # Modifier released while a hotkey trigger is active -- suppress
+                pass
+            else:
+                # Normal key up -- forward
+                if uinput is not None:
+                    uinput.write_event(event)  # type: ignore[reportUnknownMemberType]
+                    uinput.syn()  # type: ignore[reportUnknownMemberType]
+
+        elif keystate == 2:  # Key repeat/hold
+            if code in self._suppressed_triggers:
+                # Suppress repeats for active hotkey triggers
+                pass
+            elif (
+                code in self._all_modifier_codes
+                and self._suppressed_triggers
+            ):
+                # Suppress modifier repeats while a hotkey is active
+                pass
+            else:
+                # Forward repeats for normal keys
+                if uinput is not None:
+                    uinput.write_event(event)  # type: ignore[reportUnknownMemberType]
+                    uinput.syn()  # type: ignore[reportUnknownMemberType]
 
     def stop(self) -> None:
         """Stop listening and release devices."""
@@ -186,7 +307,11 @@ class EvdevHotkeyListener(HotkeyListener):
             self._thread.join(timeout=2.0)
             self._thread = None
 
-        for dev in self._devices:
+        for dev, uinput in self._devices:
+            with contextlib.suppress(OSError):
+                dev.ungrab()  # type: ignore[reportUnknownMemberType]
+            with contextlib.suppress(OSError):
+                uinput.close()  # type: ignore[reportUnknownMemberType]
             with contextlib.suppress(OSError):
                 dev.close()  # type: ignore[reportUnknownMemberType]
         self._devices.clear()

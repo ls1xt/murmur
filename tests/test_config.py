@@ -11,6 +11,7 @@ from murmur.config import (
     CONFIG_DIR,
     DictationConfig,
     FeedbackConfig,
+    HotkeyBinding,
     HotkeyConfig,
     InjectorConfig,
     TranscriberConfig,
@@ -22,11 +23,23 @@ class TestDefaultValues:
 
     def test_hotkey_defaults(self) -> None:
         config = HotkeyConfig()
-        assert config.mode == "push_to_talk"
         assert config.backend == "auto"
-        assert config.modifiers == ["KEY_LEFTCTRL", "KEY_LEFTSHIFT"]
-        assert config.trigger == "KEY_SPACE"
         assert config.evdev_device is None
+        assert len(config.bindings) == 3
+        actions = [b.action for b in config.bindings]
+        assert actions == ["push_to_talk", "toggle_start", "toggle_stop"]
+
+    def test_hotkey_binding_defaults(self) -> None:
+        binding = HotkeyBinding()
+        assert binding.modifiers == ["KEY_LEFTCTRL", "KEY_LEFTALT"]
+        assert binding.trigger == "KEY_SPACE"
+        assert binding.action == "push_to_talk"
+
+    def test_hotkey_default_bindings_keys(self) -> None:
+        config = HotkeyConfig()
+        assert config.bindings[0].trigger == "KEY_SPACE"
+        assert config.bindings[1].trigger == "KEY_K"
+        assert config.bindings[2].trigger == "KEY_L"
 
     def test_transcriber_defaults(self) -> None:
         config = TranscriberConfig()
@@ -69,27 +82,15 @@ class TestEnvVarOverride:
     def test_api_key_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ASSEMBLYAI_API_KEY", "test_key_abc")
         monkeypatch.delenv("DICTATION_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("DICTATION_HOTKEY_MODE", raising=False)
         monkeypatch.delenv("DICTATION_HOTKEY_BACKEND", raising=False)
         monkeypatch.delenv("DICTATION_INJECTOR_BACKEND", raising=False)
         monkeypatch.delenv("MURMUR_INJECT_STRATEGY", raising=False)
         config = DictationConfig.load()
         assert config.transcriber.api_key == "test_key_abc"
 
-    def test_hotkey_mode_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("DICTATION_HOTKEY_MODE", "toggle")
-        monkeypatch.delenv("ASSEMBLYAI_API_KEY", raising=False)
-        monkeypatch.delenv("DICTATION_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("DICTATION_HOTKEY_BACKEND", raising=False)
-        monkeypatch.delenv("DICTATION_INJECTOR_BACKEND", raising=False)
-        monkeypatch.delenv("MURMUR_INJECT_STRATEGY", raising=False)
-        config = DictationConfig.load()
-        assert config.hotkey.mode == "toggle"
-
     def test_log_level_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DICTATION_LOG_LEVEL", "DEBUG")
         monkeypatch.delenv("ASSEMBLYAI_API_KEY", raising=False)
-        monkeypatch.delenv("DICTATION_HOTKEY_MODE", raising=False)
         monkeypatch.delenv("DICTATION_HOTKEY_BACKEND", raising=False)
         monkeypatch.delenv("DICTATION_INJECTOR_BACKEND", raising=False)
         monkeypatch.delenv("MURMUR_INJECT_STRATEGY", raising=False)
@@ -100,7 +101,6 @@ class TestEnvVarOverride:
         monkeypatch.setenv("MURMUR_INJECT_STRATEGY", "clipboard")
         monkeypatch.delenv("ASSEMBLYAI_API_KEY", raising=False)
         monkeypatch.delenv("DICTATION_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("DICTATION_HOTKEY_MODE", raising=False)
         monkeypatch.delenv("DICTATION_HOTKEY_BACKEND", raising=False)
         monkeypatch.delenv("DICTATION_INJECTOR_BACKEND", raising=False)
         config = DictationConfig.load()
@@ -110,10 +110,38 @@ class TestEnvVarOverride:
 class TestFromDict:
     """Test config construction from a dictionary."""
 
-    def test_from_dict_applies_hotkey_mode(self) -> None:
-        data: dict[str, Any] = {"hotkey": {"mode": "toggle"}}
+    def test_from_dict_backward_compat_old_format(self) -> None:
+        """Old hotkey format (modifiers/trigger/mode) migrates to bindings."""
+        data: dict[str, Any] = {
+            "hotkey": {
+                "modifiers": ["KEY_LEFTCTRL"],
+                "trigger": "KEY_A",
+                "mode": "push_to_talk",
+            }
+        }
         config = DictationConfig._from_dict(data)
-        assert config.hotkey.mode == "toggle"
+        assert len(config.hotkey.bindings) == 1
+        assert config.hotkey.bindings[0].trigger == "KEY_A"
+        assert config.hotkey.bindings[0].modifiers == ["KEY_LEFTCTRL"]
+        assert config.hotkey.bindings[0].action == "push_to_talk"
+
+    def test_from_dict_new_bindings_format(self) -> None:
+        """New bindings format deserializes correctly."""
+        data: dict[str, Any] = {
+            "hotkey": {
+                "bindings": [
+                    {
+                        "modifiers": ["KEY_LEFTCTRL"],
+                        "trigger": "KEY_X",
+                        "action": "toggle_start",
+                    }
+                ]
+            }
+        }
+        config = DictationConfig._from_dict(data)
+        assert len(config.hotkey.bindings) == 1
+        assert config.hotkey.bindings[0].trigger == "KEY_X"
+        assert config.hotkey.bindings[0].action == "toggle_start"
 
     def test_from_dict_applies_transcriber_settings(self) -> None:
         data: dict[str, Any] = {
@@ -131,9 +159,10 @@ class TestFromDict:
     def test_from_dict_ignores_unknown_fields(self) -> None:
         data: dict[str, Any] = {"hotkey": {"nonexistent_field": "value"}}
         config = DictationConfig._from_dict(data)
-        assert not hasattr(config.hotkey, "nonexistent_field")
+        # Should get default bindings since no old or new format detected
+        assert len(config.hotkey.bindings) == 3
 
     def test_from_dict_empty_dict(self) -> None:
         data: dict[str, Any] = {}
         config = DictationConfig._from_dict(data)
-        assert config.hotkey.mode == "push_to_talk"
+        assert len(config.hotkey.bindings) == 3

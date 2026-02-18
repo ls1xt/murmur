@@ -19,14 +19,42 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 
 
 @dataclass
+class HotkeyBinding:
+    """A single hotkey binding mapping a key combination to an action."""
+
+    modifiers: list[str] = field(
+        default_factory=lambda: ["KEY_LEFTCTRL", "KEY_LEFTALT"]
+    )
+    trigger: str = "KEY_SPACE"
+    action: str = "push_to_talk"
+
+
+def _default_bindings() -> list[HotkeyBinding]:
+    """Create the default three-binding hotkey configuration."""
+    return [
+        HotkeyBinding(
+            modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
+            trigger="KEY_SPACE",
+            action="push_to_talk",
+        ),
+        HotkeyBinding(
+            modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
+            trigger="KEY_K",
+            action="toggle_start",
+        ),
+        HotkeyBinding(
+            modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
+            trigger="KEY_L",
+            action="toggle_stop",
+        ),
+    ]
+
+
+@dataclass
 class HotkeyConfig:
     """Hotkey detection settings."""
 
-    modifiers: list[str] = field(
-        default_factory=lambda: ["KEY_LEFTCTRL", "KEY_LEFTSHIFT"]
-    )
-    trigger: str = "KEY_SPACE"
-    mode: str = "push_to_talk"
+    bindings: list[HotkeyBinding] = field(default_factory=_default_bindings)
     backend: str = "auto"
     evdev_device: str | None = None
 
@@ -132,9 +160,6 @@ class DictationConfig:
         if log_level := os.environ.get("DICTATION_LOG_LEVEL"):
             config.log_level = log_level
 
-        if hotkey_mode := os.environ.get("DICTATION_HOTKEY_MODE"):
-            config.hotkey.mode = hotkey_mode
-
         if backend := os.environ.get("DICTATION_HOTKEY_BACKEND"):
             config.hotkey.backend = backend
 
@@ -155,9 +180,50 @@ class DictationConfig:
 
         Uses setattr for JSON deserialization -- type safety is enforced
         by the dataclass field types at runtime.
+
+        Handles backward-compatible migration from old hotkey format
+        (modifiers/trigger/mode) to new bindings format.
         """
         config = cls()
-        _apply_section(data, "hotkey", config.hotkey)
+        hotkey_data: Any = data.get("hotkey")
+        if isinstance(hotkey_data, dict):
+            raw_hotkey: dict[str, Any] = hotkey_data  # type: ignore[reportUnknownVariableType]
+            if "bindings" in raw_hotkey:
+                # New format: deserialize bindings list
+                bindings_raw: Any = raw_hotkey["bindings"]
+                if isinstance(bindings_raw, list):
+                    bindings: list[HotkeyBinding] = []
+                    for b in bindings_raw:  # type: ignore[reportUnknownVariableType]
+                        if isinstance(b, dict):
+                            binding = HotkeyBinding()
+                            if "modifiers" in b:
+                                binding.modifiers = b["modifiers"]
+                            if "trigger" in b:
+                                binding.trigger = b["trigger"]
+                            if "action" in b:
+                                binding.action = b["action"]
+                            bindings.append(binding)
+                    if bindings:
+                        config.hotkey.bindings = bindings
+            elif "modifiers" in raw_hotkey or "trigger" in raw_hotkey:
+                # Old format: migrate to single binding
+                old_mods: list[str] = raw_hotkey.get(
+                    "modifiers", ["KEY_LEFTCTRL", "KEY_LEFTALT"]
+                )
+                old_trigger: str = raw_hotkey.get("trigger", "KEY_SPACE")
+                old_action: str = raw_hotkey.get("mode", "push_to_talk")
+                config.hotkey.bindings = [
+                    HotkeyBinding(
+                        modifiers=old_mods,
+                        trigger=old_trigger,
+                        action=old_action,
+                    )
+                ]
+            # Apply remaining hotkey fields (backend, evdev_device)
+            if "backend" in raw_hotkey:
+                config.hotkey.backend = raw_hotkey["backend"]
+            if "evdev_device" in raw_hotkey:
+                config.hotkey.evdev_device = raw_hotkey["evdev_device"]
         _apply_section(data, "transcriber", config.transcriber)
         _apply_section(data, "injector", config.injector)
         _apply_section(data, "feedback", config.feedback)

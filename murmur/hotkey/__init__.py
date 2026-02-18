@@ -15,9 +15,7 @@ def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
             from murmur.hotkey.evdev import EvdevHotkeyListener
 
             return EvdevHotkeyListener(
-                modifiers=config.modifiers,
-                trigger=config.trigger,
-                mode=config.mode,
+                bindings=config.bindings,
                 device_path=config.evdev_device,
             )
         case "auto":
@@ -25,9 +23,7 @@ def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
                 from murmur.hotkey.evdev import EvdevHotkeyListener
 
                 return EvdevHotkeyListener(
-                    modifiers=config.modifiers,
-                    trigger=config.trigger,
-                    mode=config.mode,
+                    bindings=config.bindings,
                     device_path=config.evdev_device,
                 )
             raise RuntimeError(f"No hotkey backend available for {sys.platform}")

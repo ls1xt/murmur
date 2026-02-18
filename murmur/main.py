@@ -113,21 +113,15 @@ class DictationApp:
                 "ydotoold is not running. Start it with: systemctl --user start ydotool"
             )
 
-        mode = self.config.hotkey.mode
-        trigger_desc = (
-            f"{'+'.join(self.config.hotkey.modifiers)}+{self.config.hotkey.trigger}"
-        )
         print(f"\n{'=' * 60}")
         print("  Dictation Tool Ready")
-        print(f"  Hotkey:  {trigger_desc}")
-        print(f"  Mode:    {mode}")
         print(f"  Engine:  {self.config.transcriber.backend}")
         print(f"  Inject:  {self.config.injector.backend}")
         print(f"{'=' * 60}")
-        if mode == "push_to_talk":
-            print(f"  Hold {trigger_desc} to dictate.")
-        else:
-            print(f"  Press {trigger_desc} to start/stop dictation.")
+        for binding in self.config.hotkey.bindings:
+            combo = f"{'+'.join(binding.modifiers)}+{binding.trigger}"
+            label = binding.action.replace("_", " ").title()
+            print(f"  {combo}  ->  {label}")
         print("  Press Ctrl+C to quit.\n")
 
         self.notifier.info("Murmur started")
