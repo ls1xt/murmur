@@ -10,10 +10,11 @@ from __future__ import annotations
 import contextlib
 import importlib
 import logging
+import queue
 import threading
-from typing import Any
+from typing import Any, Iterator
 
-import assemblyai as aai  # type: ignore[import-untyped]
+import pyaudio as _pyaudio  # type: ignore[import-untyped]  # noqa: N812
 
 from murmur.config import TranscriberConfig
 from murmur.errors import fatal_from_thread
@@ -23,6 +24,77 @@ logger = logging.getLogger(__name__)
 
 # Import the v3 streaming submodule (can't use aai.streaming.v3 at runtime).
 _v3: Any = importlib.import_module("assemblyai.streaming.v3")
+
+
+class _CallbackMicStream:
+    """Thread-safe microphone stream using PyAudio callback mode.
+
+    The SDK's ``MicrophoneStream`` uses blocking ``stream.read()`` which
+    segfaults when ``close()`` is called from another thread (PortAudio
+    does not support concurrent ``Pa_ReadStream`` / ``Pa_CloseStream``).
+
+    This implementation uses callback mode instead: PortAudio pushes audio
+    into a ``queue.Queue`` from its own thread, and ``__next__`` reads from
+    that queue.  ``close()`` is safe to call from any thread because it
+    never races with a native read call.
+    """
+
+    def __init__(self, sample_rate: int = 16_000) -> None:
+        self._sample_rate = sample_rate
+        self._chunk_size = int(sample_rate * 0.1)
+        self._buf: queue.Queue[bytes | None] = queue.Queue()
+        self._closed = threading.Event()
+
+        self._pa = _pyaudio.PyAudio()
+        self._stream: Any = self._pa.open(
+            format=_pyaudio.paInt16,
+            channels=1,
+            rate=sample_rate,
+            input=True,
+            frames_per_buffer=self._chunk_size,
+            stream_callback=self._callback,
+        )
+
+    def _callback(
+        self,
+        in_data: bytes | None,
+        frame_count: int,  # noqa: ARG002
+        time_info: Any,  # noqa: ARG002
+        status_flags: int,  # noqa: ARG002
+    ) -> tuple[None, int]:
+        if self._closed.is_set():
+            return (None, _pyaudio.paComplete)
+        self._buf.put(in_data)
+        return (None, _pyaudio.paContinue)
+
+    def __iter__(self) -> Iterator[bytes]:
+        return self
+
+    def __next__(self) -> bytes:
+        if self._closed.is_set():
+            raise StopIteration
+        try:
+            data = self._buf.get(timeout=0.5)
+        except queue.Empty:
+            if self._closed.is_set():
+                raise StopIteration
+            return b""
+        if data is None:
+            raise StopIteration
+        return data
+
+    def close(self) -> None:
+        """Signal the callback to stop, then tear down PortAudio resources."""
+        if self._closed.is_set():
+            return
+        self._closed.set()
+        self._buf.put(None)  # unblock any waiting __next__
+        with contextlib.suppress(Exception):
+            self._stream.stop_stream()
+        with contextlib.suppress(Exception):
+            self._stream.close()
+        with contextlib.suppress(Exception):
+            self._pa.terminate()
 
 
 class AssemblyAITranscriber(Transcriber):
@@ -83,11 +155,11 @@ class AssemblyAITranscriber(Transcriber):
     def _stream_audio(self) -> None:
         """Stream microphone audio to AssemblyAI (runs in background thread)."""
         try:
-            self._mic_stream = aai.extras.MicrophoneStream(  # type: ignore[reportUnknownMemberType]
+            self._mic_stream = _CallbackMicStream(
                 sample_rate=self._config.sample_rate
             )
             client: Any = self._client
-            mic: Any = self._mic_stream  # type: ignore[reportUnknownMemberType]
+            mic: Any = self._mic_stream
             if client is not None:
                 client.stream(mic)
         except Exception as e:
