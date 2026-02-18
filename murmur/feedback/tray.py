@@ -67,11 +67,26 @@ class TrayIcon:
         """Whether the tray icon is active and visible."""
         return self._available
 
+    @staticmethod
+    def _appindicator_works() -> bool:
+        """Return False on compositors where AppIndicator3 is known to crash.
+
+        Sway's swaybar speaks StatusNotifierItem (SNI), not AppIndicator3.
+        Attempting to use libappindicator3 on Sway results in a NULL D-Bus
+        object_path which causes GLib to abort() on icon updates.
+        """
+        import os
+        return "SWAYSOCK" not in os.environ
+
     def start(self) -> None:
         """Start tray icon in background daemon thread. Non-blocking.
 
         Gracefully handles import failures and display errors.
         """
+        if not self._appindicator_works():
+            logger.info("Tray icon disabled (Sway detected; SNI not yet implemented)")
+            self._available = False
+            return
         try:
             import pystray  # type: ignore[import-untyped]
 
@@ -101,6 +116,8 @@ class TrayIcon:
     def set_state(self, state: str, reason: str = "") -> None:
         """Update tray icon to reflect new state. Thread-safe.
 
+        Marshals the update onto the GLib main loop when AppIndicator is in
+        use, so D-Bus signal emission always runs on the correct thread.
         No-op if tray is unavailable.
 
         Args:
@@ -112,6 +129,14 @@ class TrayIcon:
         self._state = state
         self._error_reason = reason
         try:
+            from gi.repository import GLib  # type: ignore[import-untyped]
+            GLib.idle_add(self._apply_state, state, reason)
+        except ImportError:
+            self._apply_state(state, reason)
+
+    def _apply_state(self, state: str, reason: str) -> bool:
+        """Apply state update — must run on the GLib main loop when using AppIndicator."""
+        try:
             self._icon.icon = _create_icon_image(state)
             title = _STATE_TITLES.get(state, "Idle")
             if state == "error" and reason:
@@ -120,6 +145,8 @@ class TrayIcon:
             self._icon.update_menu()
         except Exception as e:
             logger.debug("Tray icon update failed: %s", e)
+            self._available = False
+        return False  # don't repeat the idle callback
 
     def stop(self) -> None:
         """Stop tray icon. Safe to call even if not running."""
