@@ -10,8 +10,11 @@ from murmur.feedback.tray import TrayIcon, _create_icon_image
 class TestTrayIconGracefulDegradation:
     """Test graceful handling when pystray is unavailable."""
 
+    @patch("murmur.feedback.tray.TrayIcon._is_sway", return_value=False)
     @patch("murmur.feedback.tray.pystray", create=True)
-    def test_start_graceful_on_import_error(self, _mock: object) -> None:
+    def test_start_graceful_on_import_error(
+        self, _mock_pystray: object, _mock_sway: object
+    ) -> None:
         """If pystray import fails, tray stays unavailable without crash."""
         tray = TrayIcon()
         with (
@@ -109,3 +112,46 @@ class TestTrayIconMenu:
         """Quit with no callback does not crash."""
         tray = TrayIcon(on_quit=None)
         tray._on_quit_clicked()  # Should not raise
+
+
+class TestTrayIconSniDetection:
+    """Test SNI/Sway detection."""
+
+    def test_is_sway_with_swaysock(self) -> None:
+        """_is_sway returns True when SWAYSOCK is set."""
+        with patch.dict("os.environ", {"SWAYSOCK": "/run/user/1000/sway"}):
+            assert TrayIcon._is_sway() is True
+
+    def test_is_sway_without_swaysock(self) -> None:
+        """_is_sway returns False when SWAYSOCK is not set."""
+        with patch.dict("os.environ", {}, clear=True):
+            assert TrayIcon._is_sway() is False
+
+    @patch("murmur.feedback.tray.TrayIcon._is_sway", return_value=True)
+    def test_sway_routes_to_sni(self, _mock: object) -> None:
+        """On Sway, start() calls _start_sni instead of pystray."""
+        tray = TrayIcon()
+        with patch.object(tray, "_start_sni") as mock_sni:
+            tray.start()
+            mock_sni.assert_called_once()
+
+    def test_sni_set_state_delegates(self) -> None:
+        """set_state delegates to SNI backend when _use_sni is True."""
+        tray = TrayIcon()
+        tray._available = True
+        tray._use_sni = True
+        mock_sni = MagicMock()
+        tray._sni = mock_sni
+
+        tray.set_state("recording")
+        mock_sni.set_state.assert_called_once_with("recording")
+
+    def test_sni_stop_delegates(self) -> None:
+        """stop delegates to SNI backend when _use_sni is True."""
+        tray = TrayIcon()
+        tray._use_sni = True
+        mock_sni = MagicMock()
+        tray._sni = mock_sni
+
+        tray.stop()
+        mock_sni.stop.assert_called_once()
