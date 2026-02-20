@@ -2,23 +2,50 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVICE_DIR="$HOME/.config/systemd/user"
-SERVICE_NAME="murmur.service"
+OS="$(uname -s)"
 
 # Verify venv exists
-[ -f "$SCRIPT_DIR/.venv/bin/murmur" ] || { echo "ERROR: Run uv sync first"; exit 1; }
+[ -f "$SCRIPT_DIR/.venv/bin/murmur" ] || { echo "ERROR: Run ./setup.sh first (venv not found)"; exit 1; }
 
-mkdir -p "$SERVICE_DIR"
+case "$OS" in
+    Linux*)
+        SERVICE_DIR="$HOME/.config/systemd/user"
+        SERVICE_NAME="murmur.service"
 
-# Substitute actual project path (service file uses %h which systemd expands,
-# but ExecStart needs the real path)
-sed "s|%h/dev/python/murmur|$SCRIPT_DIR|g" "$SCRIPT_DIR/$SERVICE_NAME" \
-    > "$SERVICE_DIR/$SERVICE_NAME"
+        mkdir -p "$SERVICE_DIR"
 
-systemctl --user daemon-reload
-systemctl --user enable --now murmur
+        sed "s|@@MURMUR_DIR@@|$SCRIPT_DIR|g" "$SCRIPT_DIR/$SERVICE_NAME" \
+            > "$SERVICE_DIR/$SERVICE_NAME"
 
-echo "Service installed and started."
-echo "  Status:  systemctl --user status murmur"
-echo "  Logs:    journalctl --user -u murmur -f"
-echo "  Stop:    systemctl --user stop murmur"
+        systemctl --user daemon-reload
+        systemctl --user enable --now murmur
+
+        echo "Service installed and started."
+        echo "  Status:  systemctl --user status murmur"
+        echo "  Logs:    journalctl --user -u murmur -f"
+        echo "  Stop:    systemctl --user stop murmur"
+        ;;
+
+    Darwin*)
+        PLIST_DIR="$HOME/Library/LaunchAgents"
+        PLIST_NAME="com.murmur.daemon.plist"
+
+        mkdir -p "$PLIST_DIR"
+
+        sed "s|@@MURMUR_DIR@@|$SCRIPT_DIR|g" "$SCRIPT_DIR/murmur.plist" \
+            > "$PLIST_DIR/$PLIST_NAME"
+
+        launchctl load "$PLIST_DIR/$PLIST_NAME"
+
+        echo "LaunchAgent installed and started."
+        echo "  Status:  launchctl list | grep murmur"
+        echo "  Logs:    tail -f /tmp/murmur.log"
+        echo "  Stop:    launchctl stop com.murmur.daemon"
+        ;;
+
+    *)
+        echo "ERROR: Unsupported OS: $OS"
+        echo "Supported: Linux, macOS (Darwin)"
+        exit 1
+        ;;
+esac

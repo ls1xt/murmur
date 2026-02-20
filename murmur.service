@@ -1,12 +1,12 @@
 [Unit]
 Description=Murmur voice dictation daemon
-Documentation=file://%h/dev/python/murmur/README.md
+Documentation=file://@@MURMUR_DIR@@/README.md
 After=graphical-session.target sound.target
 PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/dev/python/murmur/.venv/bin/murmur
+ExecStart=@@MURMUR_DIR@@/.venv/bin/murmur
 Restart=on-failure
 RestartSec=3
 
