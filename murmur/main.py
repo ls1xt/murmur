@@ -255,7 +255,10 @@ class DictationApp:
         print(f"{'=' * 60}")
         for binding in self.config.hotkey.bindings:
             combo = f"{'+'.join(binding.modifiers)}+{binding.trigger}"
-            label = binding.action.replace("_", " ").title()
+            if binding.action == "tmux_send_keys":
+                label = f"Tmux send {binding.tmux_keys!r} -> {binding.tmux_target}"
+            else:
+                label = binding.action.replace("_", " ").title()
             print(f"  {combo}  ->  {label}")
         print("  Press Ctrl+C to quit.\n")
 

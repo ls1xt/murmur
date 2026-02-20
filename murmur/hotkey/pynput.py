@@ -108,6 +108,8 @@ class _ResolvedBinding:
     modifiers: frozenset[Key | KeyCode]
     trigger: Key | KeyCode
     action: str
+    tmux_target: str = ""
+    tmux_keys: str = ""
 
 
 def _resolve_bindings(bindings: list[HotkeyBinding]) -> list[_ResolvedBinding]:
@@ -126,6 +128,8 @@ def _resolve_bindings(bindings: list[HotkeyBinding]) -> list[_ResolvedBinding]:
                 modifiers=frozenset(mod_keys),
                 trigger=trigger_key,
                 action=binding.action,
+                tmux_target=binding.tmux_target,
+                tmux_keys=binding.tmux_keys,
             )
         )
         logger.debug(
@@ -229,7 +233,11 @@ class PynputHotkeyListener(HotkeyListener):
                     binding.trigger,
                     binding.action,
                 )
-                self._dispatch_action(binding.action)
+                self._dispatch_action(
+                    binding.action,
+                    binding.tmux_target,
+                    binding.tmux_keys,
+                )
 
     def _on_release(self, key: Key | KeyCode | None) -> None:
         """Handle a key-release event.

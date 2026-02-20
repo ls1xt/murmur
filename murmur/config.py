@@ -20,13 +20,21 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 
 @dataclass
 class HotkeyBinding:
-    """A single hotkey binding mapping a key combination to an action."""
+    """A single hotkey binding mapping a key combination to an action.
+
+    For action ``tmux_send_keys``, set ``tmux_target`` to a tmux target pane
+    (e.g. ``"my-session:1.1"`` or ``"0"``) and ``tmux_keys`` to the key
+    sequence to send (e.g. ``"q"`` or ``"Enter"`` or ``"C-c"``).
+    """
 
     modifiers: list[str] = field(
         default_factory=lambda: ["KEY_LEFTCTRL", "KEY_LEFTALT"]
     )
     trigger: str = "KEY_SPACE"
     action: str = "push_to_talk"
+    # tmux_send_keys fields (only used when action == "tmux_send_keys")
+    tmux_target: str = ""
+    tmux_keys: str = ""
 
 
 def _default_bindings() -> list[HotkeyBinding]:
@@ -211,6 +219,10 @@ class DictationConfig:
                                 binding.trigger = b["trigger"]
                             if "action" in b:
                                 binding.action = b["action"]
+                            if "tmux_target" in b:
+                                binding.tmux_target = str(b["tmux_target"])
+                            if "tmux_keys" in b:
+                                binding.tmux_keys = str(b["tmux_keys"])
                             bindings.append(binding)
                     if bindings:
                         config.hotkey.bindings = bindings

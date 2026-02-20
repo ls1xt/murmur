@@ -92,6 +92,8 @@ class _ResolvedBinding:
     modifier_codes: set[int]
     trigger_code: int
     action: str
+    tmux_target: str = ""
+    tmux_keys: str = ""
 
 
 class EvdevHotkeyListener(HotkeyListener):
@@ -134,6 +136,8 @@ class EvdevHotkeyListener(HotkeyListener):
                     modifier_codes=mod_codes,
                     trigger_code=trigger_code,
                     action=binding.action,
+                    tmux_target=binding.tmux_target,
+                    tmux_keys=binding.tmux_keys,
                 )
             )
             self._all_modifier_codes.update(mod_codes)
@@ -325,7 +329,11 @@ class EvdevHotkeyListener(HotkeyListener):
                             )
                     uinput.syn()  # type: ignore[reportUnknownMemberType]
 
-                self._dispatch_action(matched_binding.action)
+                self._dispatch_action(
+                    matched_binding.action,
+                    matched_binding.tmux_target,
+                    matched_binding.tmux_keys,
+                )
             else:
                 # Not a hotkey -- forward the event
                 if uinput is not None:
