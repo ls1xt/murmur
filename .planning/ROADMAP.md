@@ -16,6 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Reliability** - Fix all known failure modes with verified test coverage
 - [ ] **Phase 3: UX** - System tray, desktop notifications, and error surfacing
 - [ ] **Phase 4: Interaction Polish** - Hotkey suppression, live injection, audio feedback, toggle mode, Sway tray
+- [ ] **Phase 5: Cross-platform** - macOS backends (hotkey, injector, clipboard), pystray Wayland fix, macOS permissions
 
 ## Phase Details
 
@@ -94,3 +95,24 @@ Plans:
 - [ ] 04-01-PLAN.md — Multi-binding hotkey config and grab-and-forward input passthrough
 - [ ] 04-02-PLAN.md — SNI tray backend for Sway/waybar via Gio.DBus
 - [ ] 04-03-PLAN.md — Delta partial transcript injection and audio feedback visibility upgrade
+
+### Phase 5: Cross-platform coding support (macOS backends, pystray Wayland fix, permissions)
+
+**Goal:** Add macOS runtime support at the code level — pynput hotkey backend, pynput+pbcopy injector backend, macOS clipboard backend, and macOS permission detection. No tooling, service files, or shell scripts.
+**Depends on:** Phase 4
+**Plans:** 4 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — PynputHotkeyListener: macOS hotkey backend with manual modifier-set tracking
+- [ ] 05-02-PLAN.md — PynputInjector: macOS text injector with pynput type() and pbcopy clipboard fallback
+- [ ] 05-03-PLAN.md — murmur/platform/macos.py: Accessibility and Microphone permission checks
+- [ ] 05-04-PLAN.md — Wire factories, main.py startup checks, and pyproject.toml darwin deps
+
+### Phase 6: tooling and integration for Linux and macOS (setup, service, install)
+
+**Goal:** [To be planned]
+**Depends on:** Phase 5
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 6 to break down)
