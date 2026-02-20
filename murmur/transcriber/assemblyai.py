@@ -320,7 +320,7 @@ class AssemblyAITranscriber(Transcriber):
 
         Normal termination (after stop()) logs and returns.
         Stale callbacks from a previous session (gen mismatch) are ignored.
-        Unexpected termination (while still streaming) exits the daemon.
+        Unexpected termination (while still streaming) attempts reconnect.
         """
         duration: float = float(event.audio_duration_seconds)
         logger.info("Session terminated: %.1fs audio processed (gen=%d)", duration, gen)
@@ -330,8 +330,93 @@ class AssemblyAITranscriber(Transcriber):
             return
 
         if self._is_streaming:
-            # Unexpected termination -- we didn't call stop()
-            fatal_from_thread("WebSocket connection lost unexpectedly")
+            # Unexpected termination -- attempt reconnect in background thread
+            threading.Thread(target=self._reconnect, daemon=True).start()
+
+    def _reconnect(self) -> None:
+        """Attempt to reconnect after unexpected WebSocket termination.
+
+        Runs in a background thread.  Tries up to ``reconnect_attempts``
+        times with exponential backoff.  Falls back to fatal exit if all
+        attempts are exhausted.
+        """
+        import time
+
+        attempts = self._config.reconnect_attempts
+        delay = self._config.reconnect_delay_ms / 1000.0
+
+        logger.warning("WebSocket dropped unexpectedly; attempting reconnect (%d attempts)", attempts)
+
+        for attempt in range(1, attempts + 1):
+            if not self._is_streaming:
+                # User stopped recording while we were waiting -- abort reconnect
+                logger.info("Reconnect aborted: user stopped recording")
+                return
+
+            logger.info("Reconnect attempt %d/%d (delay=%.1fs)", attempt, attempts, delay if attempt > 1 else 0)
+
+            if attempt > 1:
+                time.sleep(delay)
+                delay = min(delay * 2, 30.0)  # exponential backoff, cap at 30s
+
+            try:
+                # Clean up old client and mic stream
+                if self._mic_stream is not None:
+                    with contextlib.suppress(Exception):
+                        self._mic_stream.close()
+                    self._mic_stream = None
+                if self._client is not None:
+                    with contextlib.suppress(Exception):
+                        self._client.disconnect(terminate=False)
+                    self._client = None
+
+                # Re-increment generation to invalidate stale callbacks
+                self._session_gen += 1
+                my_gen = self._session_gen
+
+                self._client = _v3.StreamingClient(
+                    _v3.StreamingClientOptions(
+                        api_key=self._config.api_key,
+                        api_host="streaming.assemblyai.com",
+                    )
+                )
+                events: Any = _v3.StreamingEvents
+                self._client.on(events.Begin, self._on_begin)
+                self._client.on(events.Turn, self._on_turn)
+                self._client.on(
+                    events.Termination,
+                    lambda c, e, g=my_gen: self._on_terminated(c, e, g),
+                )
+                self._client.on(
+                    events.Error,
+                    lambda c, e, g=my_gen: self._on_stream_error(c, e, g),
+                )
+
+                params_kwargs: dict[str, Any] = {
+                    "sample_rate": self._config.sample_rate,
+                    "format_turns": self._config.format_turns,
+                    "encoding": _v3.Encoding.pcm_s16le,
+                }
+                if self._config.keyterms_prompt:
+                    params_kwargs["keyterms_prompt"] = self._config.keyterms_prompt
+                params: Any = _v3.StreamingParameters(**params_kwargs)
+
+                self._mic_stream = _CallbackMicStream(sample_rate=self._config.sample_rate)
+                self._client.connect(params)
+
+                self._stream_thread = threading.Thread(target=self._stream_audio, daemon=True)
+                self._stream_thread.start()
+
+                logger.info("Reconnect successful on attempt %d (gen=%d)", attempt, my_gen)
+                return
+
+            except Exception as e:
+                logger.warning("Reconnect attempt %d failed: %s", attempt, e)
+
+        # All attempts exhausted
+        fatal_from_thread(
+            f"WebSocket connection lost and reconnect failed after {attempts} attempts"
+        )
 
     def _on_stream_error(self, client: Any, error: Any, gen: int) -> None:
         """Handle streaming error.
