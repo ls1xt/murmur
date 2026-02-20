@@ -62,7 +62,9 @@ class PynputInjector(TextInjector):
     def is_available(self) -> bool:
         """Check if pynput can inject text (Accessibility permission on macOS)."""
         try:
-            from ApplicationServices import AXIsProcessTrusted  # type: ignore[import-untyped]
+            from ApplicationServices import (
+                AXIsProcessTrusted,  # type: ignore[import-untyped]
+            )
             return bool(AXIsProcessTrusted())
         except ImportError:
             # Cannot verify without pyobjc; assume available
