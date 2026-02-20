@@ -149,19 +149,21 @@ class DictationApp:
     def _on_partial_transcript(self, text: str) -> None:
         """Called with intermediate (partial) transcript text.
 
-        In copy_to_clipboard mode partial injection is skipped entirely --
-        only the final transcript ends up in the clipboard.
+        Skipped entirely when inject_partials=False (default) or in
+        copy_to_clipboard mode -- only finalised turns are injected.
 
-        In normal mode injects the delta between the previous partial and the
-        new one. When AssemblyAI appends words, only the new suffix is
-        injected. When text diverges, the old partial is backspaced and new
-        text typed.
+        When inject_partials=True, injects the delta between the previous
+        partial and the new one. When AssemblyAI appends words, only the new
+        suffix is injected. When text diverges, the old partial is backspaced
+        and new text typed.
         """
         _session_var.set(self._session_id)  # propagate session to SDK thread
         if not text:
             return
         if self._clipboard_mode:
             return  # Don't inject partials in clipboard mode
+        if not self.config.transcriber.inject_partials:
+            return  # Only inject on final turns
         logger.info("Partial transcript received: %r (last_partial=%r)", text[:120], self._last_partial[:80])
         with self._inject_lock:
             if text.startswith(self._last_partial):
@@ -304,6 +306,19 @@ def main() -> None:
         default=None,
         help="Notification verbosity (default: errors)",
     )
+    parser.add_argument(
+        "--inject-partials",
+        dest="inject_partials",
+        action="store_true",
+        default=None,
+        help="Inject partial transcripts as they arrive (may cause visible corrections)",
+    )
+    parser.add_argument(
+        "--no-inject-partials",
+        dest="inject_partials",
+        action="store_false",
+        help="Only inject text when a turn is finalised (default)",
+    )
     args = parser.parse_args()
 
     config = DictationConfig.load()
@@ -313,6 +328,9 @@ def main() -> None:
 
     if args.notify is not None:
         config.notify.level = args.notify
+
+    if args.inject_partials is not None:
+        config.transcriber.inject_partials = args.inject_partials
 
     logging.basicConfig(
         level=getattr(logging, config.log_level.upper(), logging.INFO),

@@ -78,6 +78,7 @@ class TranscriberConfig:
     min_end_of_turn_silence_when_confident: int = 400
     max_turn_silence: int = 1280
     keyterms_prompt: list[str] = field(default_factory=list)
+    inject_partials: bool = False
 
 
 @dataclass
