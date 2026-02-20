@@ -63,6 +63,9 @@ Recent decisions affecting current work:
 - [Phase 05-02]: Copy _sanitize_text verbatim per-module to avoid coupling macOS backend to Linux ydotool module
 - [Phase 05-02]: clipboard-fallback as default strategy: Controller.type() for ASCII, pbcopy+Cmd+V for non-ASCII
 - [Phase 05-02]: is_available() returns True on ImportError (no pyobjc) for graceful dev-machine fallback
+- [Phase 05-03]: All macOS framework imports (ApplicationServices, AVFoundation) gated inside function bodies with try/except ImportError -- ensures importable on Linux without crashing
+- [Phase 05-03]: notDetermined microphone status (0) returns True with warning -- lets PyAudio trigger system dialog on first use rather than failing at startup
+- [Phase 05-03]: ImportError fallback returns True (not False) -- cannot verify permission, assume ok, let actual runtime fail with a useful error if missing
 
 ### Pending Todos
 
@@ -86,5 +89,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-18
-Stopped at: Phase 4 execution complete, awaiting verification
+Last session: 2026-02-20
+Stopped at: Completed 05-03-PLAN.md (murmur/platform macOS permission detection)
