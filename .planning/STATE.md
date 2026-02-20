@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-02-17)
 ## Current Position
 
 Phase: 5 of 6 (macOS Coding Support -- Hotkey, Injector, Clipboard Backends)
-Plan: 3 of N in current phase
-Status: In progress -- 05-03 complete
-Last activity: 2026-02-20 - Completed 05-03 (murmur/platform macOS permission checks)
+Plan: 4 of 4 in current phase
+Status: In progress -- 05-04 complete
+Last activity: 2026-02-20 - Completed 05-04 (wire macOS backends into application)
 
 Progress: [████████████████░░░░] ~80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: ~8 minutes
 - Total execution time: ~87 minutes
 
@@ -31,10 +31,10 @@ Progress: [████████████████░░░░] ~80%
 | 2. Reliability | 3/3 | ~9 min | ~3 min |
 | 3. UX | 2/2 | ~10 min | ~5 min |
 | 4. Interaction Polish | 3/3 | ~18 min | ~6 min |
-| 5. macOS Coding Support | 1+/N | ~4 min | ~4 min |
+| 5. macOS Coding Support | 4/4 | ~10 min | ~2.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-01, 04-02, 04-03, 05-03
+- Last 5 plans: 04-01, 04-02, 04-03, 05-03, 05-04
 - Trend: Consistent, fast
 
 *Updated after each plan completion*
@@ -68,6 +68,8 @@ Recent decisions affecting current work:
 - [Phase 05-03]: All macOS framework imports (ApplicationServices, AVFoundation) gated inside function bodies with try/except ImportError -- ensures importable on Linux without crashing
 - [Phase 05-03]: notDetermined microphone status (0) returns True with warning -- lets PyAudio trigger system dialog on first use rather than failing at startup
 - [Phase 05-03]: ImportError fallback returns True (not False) -- cannot verify permission, assume ok, let actual runtime fail with a useful error if missing
+- [Phase 05-04]: Added missing import sys to main.py (was absent; plan assumed present but was not) -- Rule 3 auto-fix
+- [Phase 05-04]: darwin startup block uses elif for linux ydotoold check, replacing unconditional check -- preserves linux semantics exactly
 
 ### Pending Todos
 
@@ -92,4 +94,4 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed 05-01-PLAN.md (PynputHotkeyListener for macOS hotkey detection)
+Stopped at: Completed 05-04-PLAN.md (Wire macOS backends into application)

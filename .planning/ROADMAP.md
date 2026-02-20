@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Reliability** - Fix all known failure modes with verified test coverage
 - [ ] **Phase 3: UX** - System tray, desktop notifications, and error surfacing
 - [ ] **Phase 4: Interaction Polish** - Hotkey suppression, live injection, audio feedback, toggle mode, Sway tray
-- [ ] **Phase 5: Cross-platform** - macOS backends (hotkey, injector, clipboard), pystray Wayland fix, macOS permissions
+- [x] **Phase 5: Cross-platform** - macOS backends (hotkey, injector, clipboard), pystray Wayland fix, macOS permissions (completed 2026-02-20)
 
 ## Phase Details
 
@@ -100,7 +100,7 @@ Plans:
 
 **Goal:** Add macOS runtime support at the code level — pynput hotkey backend, pynput+pbcopy injector backend, macOS clipboard backend, and macOS permission detection. No tooling, service files, or shell scripts.
 **Depends on:** Phase 4
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 - [ ] 05-01-PLAN.md — PynputHotkeyListener: macOS hotkey backend with manual modifier-set tracking
