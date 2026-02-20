@@ -136,7 +136,7 @@ Plans:
 
 **Goal:** GitHub Actions CI enforces lint, type-checking, and tests (unit + virtual-mic audio pipeline) across a 2×2 matrix (ubuntu-latest + macos-latest, Python 3.11 + 3.12), with pre-commit hooks for local enforcement
 **Depends on:** Phase 7
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 
 Plans:
 - [ ] 08-01-PLAN.md — conftest.py --virtual-mic flag, requires_virtual_mic marker, virtual_mic_device session fixture
