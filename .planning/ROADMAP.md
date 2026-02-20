@@ -122,11 +122,12 @@ Plans:
 **Goal:** Distribute murmur through package managers (Homebrew, AUR, .deb, PyPI) with a proper CLI subcommand structure (murmur config / record / daemon) and guided first-run setup for the API key and custom vocabulary.
 **Depends on:** Phase 6
 **Requirements**: DIST-01, DIST-02, DIST-03, UX-05
-**Plans:** 5 plans
+**Plans:** 5/5 plans complete
+**Completed:** 2026-02-20
 
 Plans:
-- [ ] 07-01-PLAN.md — CLI subcommand refactor (config/record/daemon) and test_main.py update
-- [ ] 07-02-PLAN.md — customtkinter GUI setup wizard and keyterms config field (UX-05)
-- [ ] 07-03-PLAN.md — PyPI packaging: pyproject.toml metadata, wheel verification, publish script
-- [ ] 07-04-PLAN.md — Homebrew formula and AUR PKGBUILD packaging artifacts
-- [ ] 07-05-PLAN.md — .deb build script and README installation documentation
+- [x] 07-01-PLAN.md — CLI subcommand refactor (config/record/daemon) and test_main.py update
+- [x] 07-02-PLAN.md — customtkinter GUI setup wizard and keyterms config field (UX-05)
+- [x] 07-03-PLAN.md — PyPI packaging: pyproject.toml metadata, wheel verification, publish script
+- [x] 07-04-PLAN.md — Homebrew formula and AUR PKGBUILD packaging artifacts
+- [x] 07-05-PLAN.md — .deb build script and README installation documentation

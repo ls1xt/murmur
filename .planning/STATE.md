@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Hold a key and talk -- text appears wherever you're typing, in any application, instantly and reliably.
-**Current focus:** Phase 6 complete -- all roadmap phases done
+**Current focus:** Phase 7 complete -- packaging and distribution done
 
 ## Current Position
 
-Phase: 6 of 6 (Tooling and Integration -- Linux and macOS setup, service, install)
-Plan: 2 of 2 in current phase
+Phase: 7 of 7 (Packaging for Linux and macOS — brew, AUR, deb)
+Plan: 5 of 5 in current phase
 Status: Complete
-Last activity: 2026-02-20 - Completed Phase 6 (tooling and integration — all 2 plans)
+Last activity: 2026-02-20 - Completed Phase 7 (packaging — all 5 plans)
 
 Progress: [████████████████████] 100% (17/17 estimated plans)
 
