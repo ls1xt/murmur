@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+from collections.abc import Generator
 
 import pytest
 
@@ -19,12 +21,21 @@ from murmur.config import (
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    """Add --hardware CLI option to pytest."""
+    """Add --hardware and --virtual-mic CLI options to pytest."""
     parser.addoption(
         "--hardware",
         action="store_true",
         default=False,
         help="Run integration tests requiring real hardware",
+    )
+    parser.addoption(
+        "--virtual-mic",
+        action="store_true",
+        default=False,
+        help=(
+            "Run audio pipeline tests using virtual mic device"
+            " (snd-aloop on Linux, BlackHole on macOS)"
+        ),
     )
 
 
@@ -32,15 +43,22 @@ def pytest_collection_modifyitems(
     config: pytest.Config,
     items: list[pytest.Item],
 ) -> None:
-    """Auto-skip hardware-marked tests unless --hardware flag is passed."""
-    if config.getoption("--hardware"):
-        return
-    skip_marker = pytest.mark.skip(
-        reason="hardware tests skipped (use --hardware to run)"
-    )
-    for item in items:
-        if item.get_closest_marker("hardware"):
-            item.add_marker(skip_marker)
+    """Auto-skip hardware and virtual-mic marked tests unless the flag is passed."""
+    if not config.getoption("--hardware"):
+        skip_hardware = pytest.mark.skip(
+            reason="hardware tests skipped (use --hardware to run)"
+        )
+        for item in items:
+            if item.get_closest_marker("hardware"):
+                item.add_marker(skip_hardware)
+
+    if not config.getoption("--virtual-mic"):
+        skip_virtual_mic = pytest.mark.skip(
+            reason="virtual-mic tests skipped (use --virtual-mic to run)"
+        )
+        for item in items:
+            if item.get_closest_marker("requires_virtual_mic"):
+                item.add_marker(skip_virtual_mic)
 
 
 @pytest.fixture()
@@ -121,3 +139,38 @@ def real_api_key() -> str:
             "No API key found — set ASSEMBLYAI_API_KEY or run ./config-api-key.sh"
         )
     return key
+
+
+@pytest.fixture(scope="session")
+def virtual_mic_device(
+    request: pytest.FixtureRequest,
+) -> Generator[str | int, None, None]:
+    """Yield the virtual mic device name or index for audio pipeline tests.
+
+    On Linux: detects snd-aloop ALSA loopback device by name (contains 'loopback').
+    On macOS: detects BlackHole virtual audio device by name (contains 'blackhole').
+
+    Skips the test session if no suitable virtual device is found.
+    """
+    import sounddevice as sd  # type: ignore[import-untyped]
+
+    _ = request  # session-scoped fixture; request unused but required by pytest API
+    devices = sd.query_devices()  # type: ignore[no-untyped-call]
+    if sys.platform == "linux":
+        for i, dev in enumerate(devices):
+            name: str = dev["name"].lower()
+            max_in: int = int(dev["max_input_channels"])
+            if max_in > 0 and "loopback" in name:
+                yield i
+                return
+    elif sys.platform == "darwin":
+        for _i, dev in enumerate(devices):
+            name = dev["name"].lower()
+            max_in = int(dev["max_input_channels"])
+            if max_in > 0 and "blackhole" in name:
+                yield dev["name"]
+                return
+    pytest.skip(
+        "No virtual mic device found"
+        " — load snd-aloop (Linux) or install BlackHole (macOS)"
+    )
