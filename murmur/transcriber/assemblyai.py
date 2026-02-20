@@ -46,7 +46,7 @@ class _CallbackMicStream:
     ``close()`` is safe to call from any thread.
     """
 
-    def __init__(self, sample_rate: int = 16_000) -> None:
+    def __init__(self, sample_rate: int = 16_000, device: str | int | None = None) -> None:
         self._sample_rate = sample_rate
         self._chunk_size = int(sample_rate * 0.1)  # 100ms chunks
         self._buf: queue.Queue[bytes | None] = queue.Queue()
@@ -55,7 +55,7 @@ class _CallbackMicStream:
 
         # Log the default input device
         try:
-            dev_info: Any = _sd.query_devices(kind="input")
+            dev_info: Any = _sd.query_devices(device=device, kind="input") if device is not None else _sd.query_devices(kind="input")
             logger.info(
                 "Mic device: %s (index=%s, channels=%s, rate=%s)",
                 dev_info.get("name", "unknown"),
@@ -72,6 +72,7 @@ class _CallbackMicStream:
             dtype="int16",
             blocksize=self._chunk_size,
             callback=self._callback,
+            device=device,
         )
         self._stream.start()
 
@@ -206,7 +207,10 @@ class AssemblyAITranscriber(Transcriber):
         # the WebSocket handshake (~200-500 ms) is buffered in the queue and
         # not lost.
         try:
-            self._mic_stream = _CallbackMicStream(sample_rate=self._config.sample_rate)
+            self._mic_stream = _CallbackMicStream(
+                sample_rate=self._config.sample_rate,
+                device=self._config.mic_device,
+            )
         except Exception as e:
             self._is_streaming = False
             logger.error("Failed to open mic stream: %s", e)

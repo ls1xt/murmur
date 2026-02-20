@@ -375,6 +375,28 @@ def _cmd_config(args: argparse.Namespace) -> None:
         fatal(f"Unknown config key: {args.key}")
 
 
+def _cmd_list_mics(_args: argparse.Namespace) -> None:
+    """Handle: murmur list-mics"""
+    import sounddevice as _sd  # type: ignore[import-untyped]
+    from typing import Any as _Any
+    devices: _Any = _sd.query_devices()
+    print("Available input devices:")
+    print(f"  {'IDX':>3}  {'NAME':<40}  CHANNELS  RATE")
+    print(f"  {'-'*3}  {'-'*40}  {'-'*8}  {'-'*8}")
+    default_input = _sd.default.device[0] if isinstance(_sd.default.device, (list, tuple)) else _sd.default.device
+    for i, dev in enumerate(devices):
+        if dev.get("max_input_channels", 0) > 0:
+            marker = " *" if i == default_input else "  "
+            print(
+                f"{marker}{i:>3}  {dev['name']:<40}  "
+                f"{dev['max_input_channels']:>8}  "
+                f"{int(dev.get('default_samplerate', 0)):>8}"
+            )
+    print("\n* = current default")
+    print("\nTo use a specific device:")
+    print("  murmur config --key transcriber.mic_device --value <index_or_name>")
+
+
 def _cmd_record(args: argparse.Namespace) -> None:
     """Handle: murmur record [--inject ...] [--notify ...] [--inject-partials]"""
     config = DictationConfig.load()
@@ -501,6 +523,9 @@ def main() -> None:
     )
 
     # murmur record
+    # murmur list-mics
+    subparsers.add_parser("list-mics", help="List available microphone input devices")
+
     record_parser = subparsers.add_parser(
         "record", help="Single dictation session (run once and exit)"
     )
@@ -542,3 +567,5 @@ def main() -> None:
         _cmd_record(args)
     elif args.command == "daemon":
         _cmd_daemon(args)
+    elif args.command == "list-mics":
+        _cmd_list_mics(args)

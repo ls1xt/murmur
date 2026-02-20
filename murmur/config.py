@@ -88,6 +88,9 @@ class TranscriberConfig:
     keyterms_prompt: list[str] = field(default_factory=list)
     keyterms: list[str] = field(default_factory=list)
     inject_partials: bool = False
+    reconnect_attempts: int = 5
+    reconnect_delay_ms: int = 1000
+    mic_device: str | None = None
 
 
 @dataclass
@@ -188,6 +191,9 @@ class DictationConfig:
 
         if notify_level := os.environ.get("MURMUR_NOTIFY_LEVEL"):
             config.notify.level = notify_level
+
+        if mic_device := os.environ.get("MURMUR_MIC_DEVICE"):
+            config.transcriber.mic_device = mic_device
 
         return config
 
