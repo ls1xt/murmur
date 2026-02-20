@@ -131,3 +131,15 @@ Plans:
 - [x] 07-03-PLAN.md — PyPI packaging: pyproject.toml metadata, wheel verification, publish script
 - [x] 07-04-PLAN.md — Homebrew formula and AUR PKGBUILD packaging artifacts
 - [x] 07-05-PLAN.md — .deb build script and README installation documentation
+
+### Phase 8: CI pipeline with virtual audio testing
+
+**Goal:** GitHub Actions CI enforces lint, type-checking, and tests (unit + virtual-mic audio pipeline) across a 2×2 matrix (ubuntu-latest + macos-latest, Python 3.11 + 3.12), with pre-commit hooks for local enforcement
+**Depends on:** Phase 7
+**Plans:** 4 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — conftest.py --virtual-mic flag, requires_virtual_mic marker, virtual_mic_device session fixture
+- [ ] 08-02-PLAN.md — .pre-commit-config.yaml (ruff, pre-commit-hooks, detect-secrets) and .secrets.baseline
+- [ ] 08-03-PLAN.md — .github/workflows/ci.yml with full matrix, virtual audio setup, and all CI steps
+- [ ] 08-04-PLAN.md — README.md CI status badge
