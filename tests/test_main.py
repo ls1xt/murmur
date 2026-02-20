@@ -1,17 +1,20 @@
-"""Integration tests for DictationApp orchestration.
+"""Tests for murmur CLI subcommands and DictationApp orchestration.
 
 Tests the full activate → transcribe → deactivate cycle using mocked
-backends, verifying that sequential recordings work without crashes.
+backends, and all subcommand paths (config, record, daemon).
 """
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
 from murmur.config import DictationConfig, FeedbackConfig, TrayConfig
-from murmur.main import DictationApp
+from murmur.main import DictationApp, main
 
 
 def _make_app(mocker: Any) -> tuple[DictationApp, MagicMock, MagicMock, MagicMock]:
@@ -38,13 +41,147 @@ def _make_app(mocker: Any) -> tuple[DictationApp, MagicMock, MagicMock, MagicMoc
     return app, mock_transcriber, mock_injector, mock_hotkey
 
 
+def _run_main(args: list[str], mocker: Any) -> None:
+    """Run main() with the given argv args (excluding prog name)."""
+    mocker.patch("sys.argv", ["murmur"] + args)
+
+
+# ─── Config subcommand ────────────────────────────────────────────────────────
+
+class TestConfigSubcommand:
+    def test_config_no_args_prints_json(self, mocker: Any, capsys: Any) -> None:
+        """murmur config prints full config as valid JSON."""
+        config = DictationConfig()
+        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
+        _run_main(["config"], mocker)
+        main()
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out)
+        assert "transcriber" in parsed
+        assert "hotkey" in parsed
+
+    def test_config_get_key(self, mocker: Any, capsys: Any) -> None:
+        """murmur config --key transcriber.api_key prints the value."""
+        config = DictationConfig()
+        config.transcriber.api_key = "my_test_key"
+        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
+        _run_main(["config", "--key", "transcriber.api_key"], mocker)
+        main()
+        captured = capsys.readouterr()
+        assert "my_test_key" in captured.out
+
+    def test_config_set_key(self, mocker: Any, capsys: Any) -> None:
+        """murmur config --key K --value V saves config and prints confirmation."""
+        config = DictationConfig()
+        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
+        mock_save = mocker.patch.object(config, "save")
+        _run_main(
+            ["config", "--key", "transcriber.api_key", "--value", "new_key"],
+            mocker,
+        )
+        main()
+        mock_save.assert_called_once()
+        captured = capsys.readouterr()
+        assert "Saved" in captured.out
+        assert "transcriber.api_key" in captured.out
+
+
+# ─── Record subcommand ────────────────────────────────────────────────────────
+
+class TestRecordSubcommand:
+    def test_record_no_api_key_exits(self, mocker: Any) -> None:
+        """murmur record with no API key raises SystemExit."""
+        config = DictationConfig()
+        config.transcriber.api_key = ""
+        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
+        # Suppress setup_wizard import
+        mocker.patch.dict(
+            "sys.modules",
+            {"murmur.setup_wizard": None},  # type: ignore[dict-item]
+        )
+        _run_main(["record"], mocker)
+        with pytest.raises(SystemExit):
+            main()
+
+    def test_record_with_api_key_runs_app(self, mocker: Any) -> None:
+        """murmur record with a valid API key launches DictationApp.run()."""
+        config = DictationConfig()
+        config.transcriber.api_key = "valid_key"
+        config.feedback = FeedbackConfig(audio_enabled=False)
+        config.tray = TrayConfig(enabled=False)
+        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
+        mocker.patch("murmur.main.create_transcriber", return_value=MagicMock())
+        mocker.patch("murmur.main.create_injector", return_value=MagicMock())
+        mocker.patch("murmur.main.create_hotkey_listener", return_value=MagicMock())
+        mock_run = mocker.patch.object(DictationApp, "run")
+        _run_main(["record"], mocker)
+        main()
+        mock_run.assert_called_once()
+
+    def test_record_inject_flag_overrides_config(self, mocker: Any) -> None:
+        """murmur record --inject clipboard overrides injector strategy."""
+        config = DictationConfig()
+        config.transcriber.api_key = "valid_key"
+        config.feedback = FeedbackConfig(audio_enabled=False)
+        config.tray = TrayConfig(enabled=False)
+        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
+        mocker.patch("murmur.main.create_transcriber", return_value=MagicMock())
+        mocker.patch("murmur.main.create_injector", return_value=MagicMock())
+        mocker.patch("murmur.main.create_hotkey_listener", return_value=MagicMock())
+        mocker.patch.object(DictationApp, "run")
+        _run_main(["record", "--inject", "clipboard"], mocker)
+        main()
+        assert config.injector.inject_strategy == "clipboard"
+
+
+# ─── Daemon subcommand ────────────────────────────────────────────────────────
+
+class TestDaemonSubcommand:
+    def test_daemon_status_not_running(self, mocker: Any, capsys: Any) -> None:
+        """murmur daemon status prints 'not running' when no daemon is found."""
+        # pgrep returns empty output for both checks
+        mock_result = MagicMock()
+        mock_result.stdout = ""
+        mocker.patch("murmur.main.subprocess.run", return_value=mock_result)
+        _run_main(["daemon", "status"], mocker)
+        main()
+        captured = capsys.readouterr()
+        assert "not running" in captured.out.lower()
+
+    def test_daemon_status_running(self, mocker: Any, capsys: Any) -> None:
+        """murmur daemon status prints PID when daemon is found."""
+        mock_result = MagicMock()
+        mock_result.stdout = "12345\n"
+        mocker.patch("murmur.main.subprocess.run", return_value=mock_result)
+        _run_main(["daemon", "status"], mocker)
+        main()
+        captured = capsys.readouterr()
+        assert "12345" in captured.out
+
+    def test_daemon_start_calls_record(self, mocker: Any) -> None:
+        """murmur daemon start delegates to _cmd_record."""
+        config = DictationConfig()
+        config.transcriber.api_key = "valid_key"
+        config.feedback = FeedbackConfig(audio_enabled=False)
+        config.tray = TrayConfig(enabled=False)
+        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
+        mocker.patch("murmur.main.create_transcriber", return_value=MagicMock())
+        mocker.patch("murmur.main.create_injector", return_value=MagicMock())
+        mocker.patch("murmur.main.create_hotkey_listener", return_value=MagicMock())
+        mock_run = mocker.patch.object(DictationApp, "run")
+        _run_main(["daemon", "start"], mocker)
+        main()
+        mock_run.assert_called_once()
+
+
+# ─── DictationApp lifecycle ───────────────────────────────────────────────────
+
 class TestDictationAppLifecycle:
     def test_activate_starts_transcription(self, mocker: Any) -> None:
         app, transcriber, _, _ = _make_app(mocker)
 
         app._on_activate("push_to_talk")
 
-        # Give the thread a moment to call start()
         time.sleep(0.05)
         transcriber.start.assert_called_once()
 
@@ -87,7 +224,6 @@ class TestDictationAppLifecycle:
     ) -> None:
         app, _, injector, _ = _make_app(mocker)
 
-        # Simulate a partial was previously injected
         app._last_partial = "Hello"
         app._on_final_transcript("Hello world.")
 
@@ -115,7 +251,6 @@ class TestDictationAppLifecycle:
         app._on_partial_transcript("Hello")
         app._on_partial_transcript("Hello world")
 
-        # Second call should only inject the suffix
         assert injector.inject_raw.call_count == 2
         assert injector.inject_raw.call_args_list[1][0][0] == " world"
 
@@ -125,7 +260,6 @@ class TestDictationAppLifecycle:
         app._on_partial_transcript("Hello")
         injector.inject_raw.reset_mock()
 
-        # Diverge: new text doesn't start with old
         app._on_partial_transcript("Hey there")
         injector.inject_backspaces.assert_called_once_with(5)
         injector.inject_raw.assert_called_once_with("Hey there")

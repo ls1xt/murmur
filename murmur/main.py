@@ -8,9 +8,14 @@ to provide push-to-talk (or toggle) dictation into any application.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import contextvars
+import dataclasses
+import json
 import logging
+import os
 import signal
+import subprocess
 import sys
 import threading
 import types
@@ -29,13 +34,9 @@ from murmur.transcriber.base import Transcriber
 
 logger = logging.getLogger(__name__)
 
-# Session context: injected into every LogRecord via _SessionFilter so that
-# all log lines produced during a dictation session carry the session index.
-# SDK-internal threads don't inherit this automatically — callbacks re-set it.
 _session_var: contextvars.ContextVar[int] = contextvars.ContextVar(
     "murmur_session", default=0
 )
-
 
 class _SessionFilter(logging.Filter):
     """Injects ``session`` into every LogRecord from any thread."""
@@ -43,7 +44,6 @@ class _SessionFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.session = _session_var.get()  # type: ignore[attr-defined]
         return True
-
 
 class DictationApp:
     """
@@ -129,8 +129,6 @@ class DictationApp:
         SDK stream thread, so by the time stop() returns all final-transcript
         callbacks have already fired and _clipboard_buffer is complete.
         """
-        # Snapshot before stop() so a racing _on_activate for a new session
-        # can't flip _clipboard_mode to False and silently skip the copy.
         clipboard_mode = self._clipboard_mode
         self.transcriber.stop()
         if not clipboard_mode:
@@ -168,7 +166,6 @@ class DictationApp:
         logger.info("Partial transcript received: %r (last_partial=%r)", text[:120], self._last_partial[:80])
         with self._inject_lock:
             if text.startswith(self._last_partial):
-                # Common case: AssemblyAI appended words
                 suffix = text[len(self._last_partial):]
                 if suffix:
                     logger.info("Injecting delta suffix: %r", suffix[:80])
@@ -176,7 +173,6 @@ class DictationApp:
                 else:
                     logger.debug("Partial unchanged, no delta to inject")
             else:
-                # Diverged: backspace the old partial, type new text
                 logger.info(
                     "Partial diverged: backspace %d chars, inject %r",
                     len(self._last_partial),
@@ -202,8 +198,6 @@ class DictationApp:
         _session_var.set(self._session_id)  # propagate session to SDK thread
         logger.info("Final transcript received: %r (last_partial=%r)", text[:120], self._last_partial[:80])
         with self._inject_lock:
-            # Backspace any partial text (should be empty in clipboard mode,
-            # but guard against edge cases).
             if self._last_partial:
                 logger.info("Backspacing %d partial chars before final inject", len(self._last_partial))
                 self.injector.inject_backspaces(
@@ -307,59 +301,241 @@ class DictationApp:
         logger.info("Goodbye!")
 
 
-def main() -> None:
-    """Entry point for the dictation daemon."""
-    parser = argparse.ArgumentParser(description="Murmur voice dictation daemon")
-    parser.add_argument(
-        "--inject",
-        choices=["ydotool", "clipboard-fallback", "clipboard"],
-        default=None,
-        help="Text injection strategy (default: clipboard-fallback)",
-    )
-    parser.add_argument(
-        "--notify",
-        choices=["off", "errors", "verbose"],
-        default=None,
-        help="Notification verbosity (default: errors)",
-    )
-    parser.add_argument(
-        "--inject-partials",
-        dest="inject_partials",
-        action="store_true",
-        default=None,
-        help="Inject partial transcripts as they arrive (may cause visible corrections)",
-    )
-    parser.add_argument(
-        "--no-inject-partials",
-        dest="inject_partials",
-        action="store_false",
-        help="Only inject text when a turn is finalised (default)",
-    )
-    args = parser.parse_args()
-
-    config = DictationConfig.load()
-
-    if args.inject is not None:
-        config.injector.inject_strategy = args.inject
-
-    if args.notify is not None:
-        config.notify.level = args.notify
-
-    if args.inject_partials is not None:
-        config.transcriber.inject_partials = args.inject_partials
-
+def _setup_logging(config: DictationConfig) -> None:
+    """Configure logging from config."""
     logging.basicConfig(
         level=getattr(logging, config.log_level.upper(), logging.INFO),
         format="%(asctime)s [%(levelname)-7s] [s=%(session)d] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    # Install session filter on all handlers so %(session)d is always defined.
     _filter = _SessionFilter()
     for handler in logging.root.handlers:
         handler.addFilter(_filter)
 
+
+def _get_dotted(obj: object, key: str) -> object:
+    """Get a value from a nested dataclass using dot notation."""
+    parts = key.split(".")
+    current: object = obj
+    for part in parts:
+        current = getattr(current, part)
+    return current
+
+
+def _set_dotted(obj: object, key: str, value: str) -> None:
+    """Set a value on a nested dataclass using dot notation."""
+    parts = key.split(".")
+    current: object = obj
+    for part in parts[:-1]:
+        current = getattr(current, part)
+    # Get the current field value to determine its type
+    field_name = parts[-1]
+    current_val = getattr(current, field_name)
+    # Try to cast value to the same type as the current field
+    if isinstance(current_val, bool):
+        typed_value: object = value.lower() in ("true", "1", "yes")
+    elif isinstance(current_val, int):
+        typed_value = int(value)
+    elif isinstance(current_val, float):
+        typed_value = float(value)
+    elif isinstance(current_val, list):
+        typed_value = [v.strip() for v in value.split(",") if v.strip()]
+    else:
+        typed_value = value
+    setattr(current, field_name, typed_value)
+
+
+def _cmd_config(args: argparse.Namespace) -> None:
+    """Handle: murmur config [--key KEY] [--value VALUE]"""
+    config = DictationConfig.load()
+
+    if args.key is None:
+        # Print full config as JSON
+        print(json.dumps(dataclasses.asdict(config), indent=2))
+        return
+
+    if args.value is None:
+        # Print specific key value
+        try:
+            val = _get_dotted(config, args.key)
+            print(val)
+        except AttributeError:
+            fatal(f"Unknown config key: {args.key}")
+        return
+
+    # Set key to value
+    try:
+        _set_dotted(config, args.key, args.value)
+        config.save()
+        print(f"Saved: {args.key} = {args.value}")
+    except AttributeError:
+        fatal(f"Unknown config key: {args.key}")
+
+
+def _cmd_record(args: argparse.Namespace) -> None:
+    """Handle: murmur record [--inject ...] [--notify ...] [--inject-partials]"""
+    config = DictationConfig.load()
+
+    if hasattr(args, "inject") and args.inject is not None:
+        config.injector.inject_strategy = args.inject
+
+    if hasattr(args, "notify") and args.notify is not None:
+        config.notify.level = args.notify
+
+    if hasattr(args, "inject_partials") and args.inject_partials is not None:
+        config.transcriber.inject_partials = args.inject_partials
+
+    _setup_logging(config)
+
     if not config.transcriber.api_key:
-        fatal("ASSEMBLYAI_API_KEY not set. Get a key at: https://www.assemblyai.com/")
+        # Try setup wizard
+        msg = (
+            "API key not set. Run: "
+            "murmur config --key transcriber.api_key --value YOUR_KEY"
+        )
+        try:
+            from murmur.setup_wizard import prompt_setup  # type: ignore[import-not-found]  # noqa: I001
+            if not prompt_setup(config):  # type: ignore[no-untyped-call]
+                fatal(msg)
+        except ImportError:
+            fatal(msg)
 
     app = DictationApp(config)
     app.run()
+
+
+def _cmd_daemon(args: argparse.Namespace) -> None:
+    """Handle: murmur daemon {start|stop|status|enable}"""
+    action: str = args.action
+
+    if action == "start":
+        _cmd_record(args)
+
+    elif action == "stop":
+        result = subprocess.run(
+            ["pgrep", "-f", "murmur daemon start"],
+            capture_output=True,
+            text=True,
+        )
+        if not result.stdout.strip():
+            # Also check for 'murmur record'
+            result = subprocess.run(
+                ["pgrep", "-f", "murmur record"],
+                capture_output=True,
+                text=True,
+            )
+        if result.stdout.strip():
+            pids = result.stdout.strip().split()
+            for pid in pids:
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(int(pid), signal.SIGTERM)
+            print("Daemon stopped.")
+        else:
+            print("No daemon running.")
+
+    elif action == "status":
+        result = subprocess.run(
+            ["pgrep", "-f", "murmur daemon start"],
+            capture_output=True,
+            text=True,
+        )
+        if not result.stdout.strip():
+            result = subprocess.run(
+                ["pgrep", "-f", "murmur record"],
+                capture_output=True,
+                text=True,
+            )
+        if result.stdout.strip():
+            pid = result.stdout.strip().split()[0]
+            print(f"Daemon running (PID={pid})")
+        else:
+            print("Daemon not running")
+
+    elif action == "enable":
+        # Look for install-service.sh relative to the package
+        import importlib.util
+        spec = importlib.util.find_spec("murmur")
+        install_script: str | None = None
+        if spec and spec.origin:
+            pkg_dir = os.path.dirname(spec.origin)
+            candidate = os.path.join(os.path.dirname(pkg_dir), "install-service.sh")
+            if os.path.exists(candidate):
+                install_script = candidate
+
+        if install_script:
+            subprocess.run(["bash", install_script], check=True)
+        else:
+            print("Service installer not found.")
+            print("To enable auto-start manually:")
+            if sys.platform == "darwin":
+                print("  Copy the LaunchAgent plist to ~/Library/LaunchAgents/")
+                print(
+                    "  Then: launchctl load "
+                    "~/Library/LaunchAgents/com.murmur.dictation.plist"
+                )
+            else:
+                print("  Copy murmur.service to ~/.config/systemd/user/")
+                print("  Then: systemctl --user enable --now murmur")
+
+
+def main() -> None:
+    """Entry point for the murmur CLI."""
+    parser = argparse.ArgumentParser(
+        prog="murmur",
+        description="System-wide voice dictation",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # murmur config [--key KEY] [--value VALUE]
+    config_parser = subparsers.add_parser("config", help="View or set configuration")
+    config_parser.add_argument(
+        "--key",
+        help="Dot-separated config key (e.g. transcriber.api_key)",
+    )
+    config_parser.add_argument(
+        "--value",
+        help="Value to set for the given key",
+    )
+
+    # murmur record
+    record_parser = subparsers.add_parser(
+        "record", help="Single dictation session (run once and exit)"
+    )
+    record_parser.add_argument(
+        "--inject",
+        choices=["ydotool", "clipboard-fallback", "clipboard"],
+        default=None,
+    )
+    record_parser.add_argument(
+        "--notify",
+        choices=["off", "errors", "verbose"],
+        default=None,
+    )
+    record_parser.add_argument(
+        "--inject-partials",
+        dest="inject_partials",
+        action="store_true",
+        default=None,
+    )
+    record_parser.add_argument(
+        "--no-inject-partials",
+        dest="inject_partials",
+        action="store_false",
+    )
+
+    # murmur daemon {start|stop|status|enable}
+    daemon_parser = subparsers.add_parser("daemon", help="Manage background service")
+    daemon_parser.add_argument(
+        "action",
+        choices=["start", "stop", "status", "enable"],
+        help="start: run daemon; stop: send SIGTERM; status: check; enable: install",
+    )
+
+    args = parser.parse_args()
+
+    if args.command == "config":
+        _cmd_config(args)
+    elif args.command == "record":
+        _cmd_record(args)
+    elif args.command == "daemon":
+        _cmd_daemon(args)
