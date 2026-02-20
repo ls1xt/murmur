@@ -195,13 +195,16 @@ class AssemblyAITranscriber(Transcriber):
         }
         if self._config.keyterms_prompt:
             params_kwargs["keyterms_prompt"] = self._config.keyterms_prompt
+        if self._config.language and self._config.language != "en":
+            params_kwargs["language_code"] = self._config.language
         params: Any = _v3.StreamingParameters(**params_kwargs)
         logger.info(
-            "StreamingParameters: sample_rate=%d, format_turns=%s, encoding=%s, keyterms=%s",
+            "StreamingParameters: sample_rate=%d, format_turns=%s, encoding=%s, keyterms=%s, language=%s",
             self._config.sample_rate,
             self._config.format_turns,
             "pcm_s16le",
             self._config.keyterms_prompt or [],
+            self._config.language,
         )
         # Open the mic stream BEFORE connecting so that audio captured during
         # the WebSocket handshake (~200-500 ms) is buffered in the queue and
