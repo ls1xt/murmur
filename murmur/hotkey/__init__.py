@@ -19,6 +19,13 @@ def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
                 device_path=config.evdev_device,
                 push_to_talk_debounce_ms=config.push_to_talk_debounce_ms,
             )
+        case "pynput":
+            from murmur.hotkey.pynput import PynputHotkeyListener
+
+            return PynputHotkeyListener(
+                bindings=config.bindings,
+                push_to_talk_debounce_ms=config.push_to_talk_debounce_ms,
+            )
         case "auto":
             if sys.platform == "linux":
                 from murmur.hotkey.evdev import EvdevHotkeyListener
@@ -26,6 +33,13 @@ def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
                 return EvdevHotkeyListener(
                     bindings=config.bindings,
                     device_path=config.evdev_device,
+                    push_to_talk_debounce_ms=config.push_to_talk_debounce_ms,
+                )
+            elif sys.platform == "darwin":
+                from murmur.hotkey.pynput import PynputHotkeyListener
+
+                return PynputHotkeyListener(
+                    bindings=config.bindings,
                     push_to_talk_debounce_ms=config.push_to_talk_debounce_ms,
                 )
             raise RuntimeError(f"No hotkey backend available for {sys.platform}")

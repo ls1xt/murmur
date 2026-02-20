@@ -20,6 +20,13 @@ def create_injector(config: InjectorConfig) -> TextInjector:
                 trailing_space=config.trailing_space,
                 inject_strategy=config.inject_strategy,
             )
+        case "pynput":
+            from murmur.injector.pynput import PynputInjector
+
+            return PynputInjector(
+                trailing_space=config.trailing_space,
+                inject_strategy=config.inject_strategy,
+            )
         case "auto":
             if sys.platform == "linux":
                 from murmur.injector.ydotool import YdotoolInjector
@@ -27,6 +34,13 @@ def create_injector(config: InjectorConfig) -> TextInjector:
                 return YdotoolInjector(
                     ydotool_path=config.ydotool_path,
                     key_delay=config.key_delay,
+                    trailing_space=config.trailing_space,
+                    inject_strategy=config.inject_strategy,
+                )
+            elif sys.platform == "darwin":
+                from murmur.injector.pynput import PynputInjector
+
+                return PynputInjector(
                     trailing_space=config.trailing_space,
                     inject_strategy=config.inject_strategy,
                 )
