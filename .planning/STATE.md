@@ -67,6 +67,8 @@ None.
 ### Roadmap Evolution
 
 - Phase 4 added: Interaction polish — hotkey passthrough suppression, live partial injection, audio feedback, toggle mode, and Sway tray support
+- Phase 5 added: macOS coding support (hotkey, injector, clipboard backends)
+- Phase 6 added: tooling and integration for Linux and macOS (setup, service, install)
 
 ### Blockers/Concerns
 
