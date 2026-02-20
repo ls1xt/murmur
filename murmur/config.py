@@ -109,8 +109,8 @@ class FeedbackConfig:
     """User feedback settings."""
 
     audio_enabled: bool = True
-    start_sound: str = "start"
-    stop_sound: str = "stop"
+    start_hz: float = 440.0
+    stop_hz: float = 880.0
     visual_enabled: bool = False
 
 

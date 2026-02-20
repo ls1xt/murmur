@@ -58,6 +58,8 @@ class TestDefaultValues:
     def test_feedback_defaults(self) -> None:
         config = FeedbackConfig()
         assert config.audio_enabled is True
+        assert config.start_hz == 440.0
+        assert config.stop_hz == 880.0
         assert config.visual_enabled is False
 
     def test_dictation_config_defaults(self) -> None:

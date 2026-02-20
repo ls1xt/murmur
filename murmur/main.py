@@ -73,7 +73,11 @@ class DictationApp:
         self.hotkey: HotkeyListener = create_hotkey_listener(config.hotkey)
         self.transcriber: Transcriber = create_transcriber(config.transcriber)
         self.injector: TextInjector = create_injector(config.injector)
-        self.feedback = AudioFeedback(enabled=config.feedback.audio_enabled)
+        self.feedback = AudioFeedback(
+            enabled=config.feedback.audio_enabled,
+            start_hz=config.feedback.start_hz,
+            stop_hz=config.feedback.stop_hz,
+        )
         self.notifier = Notifier(level=config.notify.level)
         self.tray = TrayIcon(
             on_quit=self._request_shutdown,
