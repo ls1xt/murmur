@@ -54,18 +54,20 @@ def _list_devices() -> list[str]:
 def find_keyboard_devices() -> list[str]:
     """Auto-detect physical keyboard input devices.
 
-    Skips virtual/uinput devices (phys == "") to avoid grabbing the
-    ydotoold injection device, which would intercept our own injected
-    keystrokes and produce garbage output.
+    Skips virtual/uinput devices to avoid grabbing the ydotoold injection
+    device or leftover murmur UInput devices from a previous run.
+    Virtual devices are identified by phys=="" (ydotoold) or
+    phys=="py-evdev-uinput" (py-evdev UInput, used by murmur itself).
     """
     keyboards: list[str] = []
     for path_str in _list_devices():
         try:
             dev: Any = _open_device(path_str)
-            # Skip virtual devices: real keyboards have a non-empty phys path
-            # (e.g. "usb-0000:00:14.0-1/input0"). uinput devices have phys="".
+            # Skip virtual devices: real keyboards have a USB/PCI phys path
+            # (e.g. "usb-0000:00:14.0-1/input0"). Virtual devices have
+            # phys="" (ydotoold) or phys="py-evdev-uinput" (py-evdev UInput).
             phys: str = str(dev.phys or "")  # type: ignore[reportUnknownMemberType]
-            if not phys:
+            if not phys or phys == "py-evdev-uinput":
                 dev_name_skip: str = str(dev.name)  # type: ignore[reportUnknownMemberType]
                 logger.debug(
                     "Skipping virtual device: %s (%s)", dev_name_skip, path_str
