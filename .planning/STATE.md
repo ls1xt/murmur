@@ -2,19 +2,19 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-17)
+See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Hold a key and talk -- text appears wherever you're typing, in any application, instantly and reliably.
-**Current focus:** Phase 5 -- macOS Coding Support
+**Current focus:** Phase 6 -- Tooling and Integration (Linux and macOS setup, service, install)
 
 ## Current Position
 
-Phase: 5 of 6 (macOS Coding Support -- Hotkey, Injector, Clipboard Backends)
-Plan: 4 of 4 in current phase
-Status: In progress -- 05-04 complete
-Last activity: 2026-02-20 - Completed 05-04 (wire macOS backends into application)
+Phase: 6 of 6 (Tooling and Integration -- Linux and macOS setup, service, install)
+Plan: 0 of 0 in current phase
+Status: Ready to plan
+Last activity: 2026-02-20 - Completed Phase 5 (macOS coding support — all 4 plans)
 
-Progress: [████████████████░░░░] ~80%
+Progress: [████████████████████] ~83% (15/18 estimated plans)
 
 ## Performance Metrics
 
@@ -94,4 +94,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed 05-04-PLAN.md (Wire macOS backends into application)
+Stopped at: Phase 5 complete, ready to plan Phase 6
+Resume file: None
