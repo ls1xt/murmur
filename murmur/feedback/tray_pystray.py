@@ -30,8 +30,8 @@ class PystrayTray:
         self._state = "idle"
         self._error_reason = ""
 
-    def start(self) -> None:
-        """Start the pystray icon in a background daemon thread."""
+    def _build_icon(self) -> Any:
+        """Build and return a pystray Icon without running it."""
         import pystray  # type: ignore[import-untyped]
 
         icon_image = create_icon_image("idle")
@@ -43,14 +43,35 @@ class PystrayTray:
             ),
             pystray.MenuItem("Quit", self._on_quit_clicked),
         )
-        self._icon = pystray.Icon(
+        return pystray.Icon(
             "murmur",
             icon=icon_image,
             title="Murmur - Idle",
             menu=menu,
         )
+
+    def start(self) -> None:
+        """Start the pystray icon in a background daemon thread (Linux/GTK path)."""
+        self._icon = self._build_icon()
         self._thread = threading.Thread(target=self._icon.run, daemon=True)
         self._thread.start()
+
+    def run_blocking(self, setup_fn: Callable[[], None]) -> None:
+        """Build and run the pystray icon on the calling thread.
+
+        Must be called from the main thread on macOS because pystray's
+        Darwin backend calls ``NSApp.run()`` which requires the main thread.
+        ``setup_fn`` is invoked in a background thread once the icon is ready;
+        when it returns the event loop is stopped.
+        """
+        self._icon = self._build_icon()
+
+        def _setup(icon: Any) -> None:
+            icon.visible = True
+            setup_fn()
+            icon.stop()
+
+        self._icon.run(setup=_setup)
 
     def set_state(self, state: str, reason: str = "") -> None:
         """Update icon state. Thread-safe via GLib.idle_add when available."""

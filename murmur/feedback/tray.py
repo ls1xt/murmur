@@ -82,6 +82,30 @@ class TrayIcon:
             logger.warning("SNI tray failed: %s", e)
             self._available = False
 
+    def run_blocking(self, setup_fn: Callable[[], None]) -> None:
+        """Run the tray icon on the calling (main) thread.
+
+        Required on macOS where ``pystray`` must run on the main thread.
+        ``setup_fn`` is called in a background thread once the icon is ready;
+        when it returns the event loop exits.  Falls back to calling
+        ``setup_fn()`` directly if the tray is unavailable.
+        """
+        if self._is_sway():
+            self._start_sni()
+            setup_fn()
+            return
+        try:
+            from murmur.feedback.tray_pystray import PystrayTray
+
+            self._backend = PystrayTray(on_quit=self._on_quit)
+            self._available = True
+            logger.info("Tray icon started (pystray)")
+            self._backend.run_blocking(setup_fn)
+        except Exception as e:
+            print(f"murmur: tray icon unavailable: {e}", file=sys.stderr)
+            self._available = False
+            setup_fn()
+
     def set_state(self, state: str, reason: str = "") -> None:
         """Update tray icon to reflect new state. Thread-safe.
 

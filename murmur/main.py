@@ -278,11 +278,6 @@ class DictationApp:
 
         self.notifier.info("Murmur started")
 
-        if self.config.tray.enabled:
-            self.tray.start()
-
-        self.hotkey.start()
-
         def _signal_handler(signum: int, frame: types.FrameType | None) -> None:
             print("\nShutting down...")
             self._stop_event.set()
@@ -290,7 +285,21 @@ class DictationApp:
         signal.signal(signal.SIGINT, _signal_handler)
         signal.signal(signal.SIGTERM, _signal_handler)
 
-        self._stop_event.wait()
+        if sys.platform == "darwin" and self.config.tray.enabled:
+            # pystray's Darwin backend calls NSApp.run() which must run on the
+            # main thread.  Use run_blocking() so the tray event loop owns the
+            # main thread while everything else runs in setup_fn's thread.
+            def _darwin_setup() -> None:
+                self.hotkey.start()
+                self._stop_event.wait()
+
+            self.tray.run_blocking(_darwin_setup)
+        else:
+            if self.config.tray.enabled:
+                self.tray.start()
+            self.hotkey.start()
+            self._stop_event.wait()
+
         self.shutdown()
 
     def _on_tray_activate(self) -> None:
