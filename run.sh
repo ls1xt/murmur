@@ -3,12 +3,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$HOME/.config/murmur/config.json"
+OS="$(uname -s)"
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 warn() { echo "WARNING: $*" >&2; }
 
+# --- Shared preflight checks (all platforms) ---
+
 # Check venv
-[ -f "$SCRIPT_DIR/.venv/bin/murmur" ] || fail "No venv found. Run: uv sync"
+[ -f "$SCRIPT_DIR/.venv/bin/murmur" ] || fail "No venv found. Run: ./setup.sh"
 
 # Check API key
 api_key_set=false
@@ -28,27 +31,45 @@ if ! "$SCRIPT_DIR/.venv/bin/python" -c "import sounddevice; sounddevice.query_de
     fail "No audio input device found. Check your microphone and audio system configuration."
 fi
 
-# Check input group
-groups | grep -qw input || warn "Not in 'input' group — hotkey detection may fail. Run: sudo usermod -aG input \$USER"
-
-# Start ydotoold if not running
-if ! pgrep -x ydotoold > /dev/null 2>&1; then
-    echo "Starting ydotoold..."
-    systemctl --user start ydotool 2>/dev/null || ydotoold &
-    sleep 0.5
-    pgrep -x ydotoold > /dev/null 2>&1 || fail "ydotoold failed to start"
-fi
-
-# Silence PortAudio probe noise (ALSA + JACK warnings from device enumeration)
-export JACK_NO_AUDIO_RESERVATION=1
 # Force Python to use unbuffered I/O so output appears immediately when piped
 export PYTHONUNBUFFERED=1
 
-"$SCRIPT_DIR/.venv/bin/murmur" "$@" 2> >(grep --line-buffered -v \
-    -e "^ALSA lib" \
-    -e "^JACK " \
-    -e "^Cannot connect to server" \
-    -e "^JackShmReadWritePtr" \
-    -e "^jack server" \
-    -e "^Cannot open device" \
-    >&2)
+# --- Platform-specific launch ---
+
+case "$OS" in
+    Linux*)
+        # Check input group
+        groups | grep -qw input || warn "Not in 'input' group — hotkey detection may fail. Run: sudo usermod -aG input \$USER"
+
+        # Start ydotoold if not running
+        if ! pgrep -x ydotoold > /dev/null 2>&1; then
+            echo "Starting ydotoold..."
+            systemctl --user start ydotool 2>/dev/null || ydotoold &
+            sleep 0.5
+            pgrep -x ydotoold > /dev/null 2>&1 || fail "ydotoold failed to start"
+        fi
+
+        # Silence PortAudio probe noise (ALSA + JACK warnings from device enumeration)
+        export JACK_NO_AUDIO_RESERVATION=1
+
+        "$SCRIPT_DIR/.venv/bin/murmur" "$@" 2> >(grep --line-buffered -v \
+            -e "^ALSA lib" \
+            -e "^JACK " \
+            -e "^Cannot connect to server" \
+            -e "^JackShmReadWritePtr" \
+            -e "^jack server" \
+            -e "^Cannot open device" \
+            >&2)
+        ;;
+
+    Darwin*)
+        # macOS: ydotoold not needed (uses pynput + pbcopy injector)
+        # Accessibility permissions handled at runtime by DictationApp.run()
+        # CoreAudio backend produces no ALSA/JACK noise — no stderr filter needed
+        "$SCRIPT_DIR/.venv/bin/murmur" "$@"
+        ;;
+
+    *)
+        fail "Unsupported OS: $OS (supported: Linux, macOS)"
+        ;;
+esac
