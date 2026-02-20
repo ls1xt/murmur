@@ -139,7 +139,7 @@ Plans:
 **Plans:** 4/4 plans complete
 
 Plans:
-- [ ] 08-01-PLAN.md — conftest.py --virtual-mic flag, requires_virtual_mic marker, virtual_mic_device session fixture
-- [ ] 08-02-PLAN.md — .pre-commit-config.yaml (ruff, pre-commit-hooks, detect-secrets) and .secrets.baseline
-- [ ] 08-03-PLAN.md — .github/workflows/ci.yml with full matrix, virtual audio setup, and all CI steps
-- [ ] 08-04-PLAN.md — README.md CI status badge
+- [x] 08-01-PLAN.md — conftest.py --virtual-mic flag, requires_virtual_mic marker, virtual_mic_device session fixture
+- [x] 08-02-PLAN.md — .pre-commit-config.yaml (ruff, pre-commit-hooks, detect-secrets) and .secrets.baseline
+- [x] 08-03-PLAN.md — .github/workflows/ci.yml with full matrix, virtual audio setup, and all CI steps
+- [x] 08-04-PLAN.md — README.md CI status badge
