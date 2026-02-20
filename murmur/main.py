@@ -11,6 +11,7 @@ import argparse
 import contextvars
 import logging
 import signal
+import sys
 import threading
 import types
 
@@ -233,7 +234,22 @@ class DictationApp:
         """Start the dictation app. Blocks until interrupted."""
         self._running = True
 
-        if not self.injector.is_available():
+        if sys.platform == "darwin":
+            from murmur.platform.macos import check_accessibility, check_microphone
+
+            if not check_accessibility():
+                fatal(
+                    "Accessibility permission required for keyboard monitoring.\n"
+                    "Go to System Settings → Privacy & Security → Accessibility\n"
+                    "and enable Terminal (or your Python interpreter)."
+                )
+            if not check_microphone():
+                fatal(
+                    "Microphone permission required for audio capture.\n"
+                    "Go to System Settings → Privacy & Security → Microphone\n"
+                    "and enable Terminal (or your Python interpreter)."
+                )
+        elif not self.injector.is_available():
             fatal(
                 "ydotoold is not running. Start it with: systemctl --user start ydotool"
             )
