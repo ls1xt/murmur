@@ -27,7 +27,12 @@ class TestDefaultValues:
         assert config.evdev_device is None
         assert len(config.bindings) == 4
         actions = [b.action for b in config.bindings]
-        assert actions == ["push_to_talk", "toggle_start", "toggle_stop", "copy_to_clipboard"]
+        assert actions == [
+            "push_to_talk",
+            "toggle_start",
+            "toggle_stop",
+            "copy_to_clipboard",
+        ]
 
     def test_hotkey_binding_defaults(self) -> None:
         binding = HotkeyBinding()

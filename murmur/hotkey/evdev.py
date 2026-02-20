@@ -67,7 +67,9 @@ def find_keyboard_devices() -> list[str]:
             phys: str = str(dev.phys or "")  # type: ignore[reportUnknownMemberType]
             if not phys:
                 dev_name_skip: str = str(dev.name)  # type: ignore[reportUnknownMemberType]
-                logger.debug("Skipping virtual device: %s (%s)", dev_name_skip, path_str)
+                logger.debug(
+                    "Skipping virtual device: %s (%s)", dev_name_skip, path_str
+                )
                 dev.close()  # type: ignore[reportUnknownMemberType]
                 continue
             caps: dict[int, list[int]] = dev.capabilities(  # type: ignore[reportUnknownMemberType]
@@ -309,9 +311,8 @@ class EvdevHotkeyListener(HotkeyListener):
             # Check all bindings for a match
             matched_binding: _ResolvedBinding | None = None
             for binding in self._bindings:
-                if (
-                    code == binding.trigger_code
-                    and binding.modifier_codes.issubset(self._held_keys)
+                if code == binding.trigger_code and binding.modifier_codes.issubset(
+                    self._held_keys
                 ):
                     matched_binding = binding
                     break
@@ -354,7 +355,7 @@ class EvdevHotkeyListener(HotkeyListener):
                 if released_binding is not None:
                     if released_binding.action in _DEBOUNCED_ACTIONS:
                         # Schedule a debounced release instead of firing immediately.
-                        # The trigger stays in _suppressed_triggers until debounce fires.
+                        # Trigger stays in _suppressed_triggers until debounce fires.
                         self._pending_releases[code] = (
                             time.monotonic(),
                             released_binding,
@@ -379,10 +380,7 @@ class EvdevHotkeyListener(HotkeyListener):
                                         _EV_KEY, mod_code, 1
                                     )
                             uinput.syn()  # type: ignore[reportUnknownMemberType]
-            elif (
-                code in self._all_modifier_codes
-                and self._suppressed_triggers
-            ):
+            elif code in self._all_modifier_codes and self._suppressed_triggers:
                 # Modifier released while a hotkey trigger is active (or in its
                 # debounce window) -- suppress the key-up so the compositor
                 # doesn't see a spurious modifier release.
@@ -399,10 +397,7 @@ class EvdevHotkeyListener(HotkeyListener):
             if code in self._suppressed_triggers:
                 # Suppress repeats for active hotkey triggers
                 pass
-            elif (
-                code in self._all_modifier_codes
-                and self._suppressed_triggers
-            ):
+            elif code in self._all_modifier_codes and self._suppressed_triggers:
                 # Suppress modifier repeats while a hotkey is active
                 pass
             else:

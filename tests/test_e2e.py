@@ -101,7 +101,9 @@ class TestE2ETranscription:
         for text in injector.injected:
             assert text.strip(), f"Empty string was injected: {text!r}"
 
-    def test_no_fatal_errors_during_session(self, real_api_key: str, mocker: Any) -> None:
+    def test_no_fatal_errors_during_session(
+        self, real_api_key: str, mocker: Any
+    ) -> None:
         """No fatal errors occur during a normal activate → deactivate cycle."""
         app, transcriber, _injector = _make_app(real_api_key, mocker)
         from murmur.transcriber import assemblyai as _aai_mod

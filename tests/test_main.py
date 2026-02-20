@@ -48,6 +48,7 @@ def _run_main(args: list[str], mocker: Any) -> None:
 
 # ─── Config subcommand ────────────────────────────────────────────────────────
 
+
 class TestConfigSubcommand:
     def test_config_no_args_prints_json(self, mocker: Any, capsys: Any) -> None:
         """murmur config prints full config as valid JSON."""
@@ -87,6 +88,7 @@ class TestConfigSubcommand:
 
 
 # ─── Record subcommand ────────────────────────────────────────────────────────
+
 
 class TestRecordSubcommand:
     def test_record_no_api_key_exits(self, mocker: Any) -> None:
@@ -136,6 +138,7 @@ class TestRecordSubcommand:
 
 # ─── Daemon subcommand ────────────────────────────────────────────────────────
 
+
 class TestDaemonSubcommand:
     def test_daemon_status_not_running(self, mocker: Any, capsys: Any) -> None:
         """murmur daemon status prints 'not running' when no daemon is found."""
@@ -175,6 +178,7 @@ class TestDaemonSubcommand:
 
 
 # ─── DictationApp lifecycle ───────────────────────────────────────────────────
+
 
 class TestDictationAppLifecycle:
     def test_activate_starts_transcription(self, mocker: Any) -> None:
@@ -219,9 +223,7 @@ class TestDictationAppLifecycle:
 
         injector.inject.assert_called_once_with("Hello world.")
 
-    def test_final_transcript_backspaces_partial_first(
-        self, mocker: Any
-    ) -> None:
+    def test_final_transcript_backspaces_partial_first(self, mocker: Any) -> None:
         app, _, injector, _ = _make_app(mocker)
 
         app._last_partial = "Hello"

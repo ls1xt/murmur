@@ -223,10 +223,7 @@ class PynputHotkeyListener(HotkeyListener):
         self._held.add(canonical)
 
         for binding in self._bindings:
-            if (
-                binding.trigger == canonical
-                and binding.modifiers.issubset(self._held)
-            ):
+            if binding.trigger == canonical and binding.modifiers.issubset(self._held):
                 logger.debug(
                     "Hotkey pressed: %s+%s -> %s",
                     "+".join(str(m) for m in binding.modifiers),

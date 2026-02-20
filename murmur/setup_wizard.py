@@ -23,6 +23,7 @@ def _customtkinter_available() -> bool:
     """Return True if customtkinter can be imported."""
     try:
         import customtkinter  # noqa: F401  # type: ignore[import-untyped]
+
         return True
     except ImportError:
         return False
@@ -51,9 +52,7 @@ def _show_gui_dialog(config: DictationConfig) -> bool:  # type: ignore[return]
         font=ctk.CTkFont(size=13),
     ).pack(pady=(0, 16))
 
-    ctk.CTkLabel(root, text="AssemblyAI API key *", anchor="w").pack(
-        fill="x", padx=32
-    )
+    ctk.CTkLabel(root, text="AssemblyAI API key *", anchor="w").pack(fill="x", padx=32)
     api_key_var = ctk.StringVar(value=config.transcriber.api_key or "")
     api_key_entry = ctk.CTkEntry(
         root,
@@ -133,8 +132,7 @@ def _prompt_terminal(config: DictationConfig) -> bool:
     config.transcriber.api_key = key
     try:
         keyterms_raw = input(
-            "Custom vocabulary terms "
-            "(optional, comma-separated, press Enter to skip): "
+            "Custom vocabulary terms (optional, comma-separated, press Enter to skip): "
         ).strip()
     except (EOFError, KeyboardInterrupt):
         keyterms_raw = ""

@@ -30,7 +30,7 @@ class TextInjector(ABC):
         """Check if the injection backend is available and ready."""
         ...
 
-    def copy_to_clipboard(self, text: str) -> None:
+    def copy_to_clipboard(self, text: str) -> None:  # noqa: B027
         """Copy text to the system clipboard without injecting into an app.
 
         Default implementation does nothing.  Backends that support clipboard

@@ -187,7 +187,7 @@ class TestEvdevHotkeyListener:
         on_deactivate.assert_called_once()
 
     def test_push_to_talk_debounce_cancels_on_repress(self, mocker: Any) -> None:
-        """Spurious key-up followed by key-down within debounce window cancels release."""
+        """Spurious key-up then key-down within debounce window cancels release."""
         from murmur.hotkey.evdev import EvdevHotkeyListener, _ecodes_dict
 
         on_activate = MagicMock()

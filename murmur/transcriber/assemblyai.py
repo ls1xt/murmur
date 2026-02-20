@@ -12,7 +12,8 @@ import importlib
 import logging
 import queue
 import threading
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 import sounddevice as _sd  # type: ignore[import-untyped]
 
@@ -33,6 +34,7 @@ def _rms_level(data: bytes) -> float:
     samples = _struct.unpack(f"<{n}h", data)
     return (sum(s * s for s in samples) / n) ** 0.5
 
+
 # Import the v3 streaming submodule (can't use aai.streaming.v3 at runtime).
 _v3: Any = importlib.import_module("assemblyai.streaming.v3")
 
@@ -46,7 +48,9 @@ class _CallbackMicStream:
     ``close()`` is safe to call from any thread.
     """
 
-    def __init__(self, sample_rate: int = 16_000, device: str | int | None = None) -> None:
+    def __init__(
+        self, sample_rate: int = 16_000, device: str | int | None = None
+    ) -> None:
         self._sample_rate = sample_rate
         self._chunk_size = int(sample_rate * 0.1)  # 100ms chunks
         self._buf: queue.Queue[bytes | None] = queue.Queue()
@@ -55,7 +59,11 @@ class _CallbackMicStream:
 
         # Log the default input device
         try:
-            dev_info: Any = _sd.query_devices(device=device, kind="input") if device is not None else _sd.query_devices(kind="input")
+            dev_info: Any = (
+                _sd.query_devices(device=device, kind="input")
+                if device is not None
+                else _sd.query_devices(kind="input")
+            )
             logger.info(
                 "Mic device: %s (index=%s, channels=%s, rate=%s)",
                 dev_info.get("name", "unknown"),
@@ -93,7 +101,9 @@ class _CallbackMicStream:
             rms = _rms_level(data)
             logger.info(
                 "Mic audio chunk #%d: %d bytes, RMS=%.0f",
-                self._chunk_count, len(data), rms,
+                self._chunk_count,
+                len(data),
+                rms,
             )
 
     def __iter__(self) -> Iterator[bytes]:
@@ -106,7 +116,7 @@ class _CallbackMicStream:
             data = self._buf.get(timeout=0.5)
         except queue.Empty:
             if self._closed.is_set():
-                raise StopIteration
+                raise StopIteration from None
             return b""
         if data is None:
             raise StopIteration
@@ -199,7 +209,8 @@ class AssemblyAITranscriber(Transcriber):
             params_kwargs["language_code"] = self._config.language
         params: Any = _v3.StreamingParameters(**params_kwargs)
         logger.info(
-            "StreamingParameters: sample_rate=%d, format_turns=%s, encoding=%s, keyterms=%s, language=%s",
+            "StreamingParameters: sample_rate=%d, format_turns=%s,"
+            " encoding=%s, keyterms=%s, language=%s",
             self._config.sample_rate,
             self._config.format_turns,
             "pcm_s16le",
@@ -326,7 +337,11 @@ class AssemblyAITranscriber(Transcriber):
         logger.info("Session terminated: %.1fs audio processed (gen=%d)", duration, gen)
 
         if gen != self._session_gen:
-            logger.debug("Ignoring stale termination for gen=%d (current=%d)", gen, self._session_gen)
+            logger.debug(
+                "Ignoring stale termination for gen=%d (current=%d)",
+                gen,
+                self._session_gen,
+            )
             return
 
         if self._is_streaming:
@@ -345,7 +360,10 @@ class AssemblyAITranscriber(Transcriber):
         attempts = self._config.reconnect_attempts
         delay = self._config.reconnect_delay_ms / 1000.0
 
-        logger.warning("WebSocket dropped unexpectedly; attempting reconnect (%d attempts)", attempts)
+        logger.warning(
+            "WebSocket dropped unexpectedly; attempting reconnect (%d attempts)",
+            attempts,
+        )
 
         for attempt in range(1, attempts + 1):
             if not self._is_streaming:
@@ -353,7 +371,12 @@ class AssemblyAITranscriber(Transcriber):
                 logger.info("Reconnect aborted: user stopped recording")
                 return
 
-            logger.info("Reconnect attempt %d/%d (delay=%.1fs)", attempt, attempts, delay if attempt > 1 else 0)
+            logger.info(
+                "Reconnect attempt %d/%d (delay=%.1fs)",
+                attempt,
+                attempts,
+                delay if attempt > 1 else 0,
+            )
 
             if attempt > 1:
                 time.sleep(delay)
@@ -401,13 +424,19 @@ class AssemblyAITranscriber(Transcriber):
                     params_kwargs["keyterms_prompt"] = self._config.keyterms_prompt
                 params: Any = _v3.StreamingParameters(**params_kwargs)
 
-                self._mic_stream = _CallbackMicStream(sample_rate=self._config.sample_rate)
+                self._mic_stream = _CallbackMicStream(
+                    sample_rate=self._config.sample_rate
+                )
                 self._client.connect(params)
 
-                self._stream_thread = threading.Thread(target=self._stream_audio, daemon=True)
+                self._stream_thread = threading.Thread(
+                    target=self._stream_audio, daemon=True
+                )
                 self._stream_thread.start()
 
-                logger.info("Reconnect successful on attempt %d (gen=%d)", attempt, my_gen)
+                logger.info(
+                    "Reconnect successful on attempt %d (gen=%d)", attempt, my_gen
+                )
                 return
 
             except Exception as e:
@@ -424,7 +453,12 @@ class AssemblyAITranscriber(Transcriber):
         Stale callbacks from a previous session (gen mismatch) are ignored.
         """
         if gen != self._session_gen:
-            logger.debug("Ignoring stale error for gen=%d (current=%d): %s", gen, self._session_gen, error)
+            logger.debug(
+                "Ignoring stale error for gen=%d (current=%d): %s",
+                gen,
+                self._session_gen,
+                error,
+            )
             return
 
         error_str = str(error)

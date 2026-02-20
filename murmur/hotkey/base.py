@@ -44,9 +44,7 @@ class HotkeyListener(ABC):
         """Dispatch a hotkey press by action name."""
         if action == "tmux_send_keys":
             if tmux_target and tmux_keys:
-                logger.info(
-                    "tmux send-keys: target=%r keys=%r", tmux_target, tmux_keys
-                )
+                logger.info("tmux send-keys: target=%r keys=%r", tmux_target, tmux_keys)
                 try:
                     subprocess.run(
                         ["tmux", "send-keys", "-t", tmux_target, tmux_keys],

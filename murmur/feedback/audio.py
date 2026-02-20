@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 class AudioFeedback:
     """Generates PCM sine tone beeps for start/stop feedback."""
 
-    def __init__(self, enabled: bool = True, start_hz: float = 440.0, stop_hz: float = 880.0) -> None:
+    def __init__(
+        self, enabled: bool = True, start_hz: float = 440.0, stop_hz: float = 880.0
+    ) -> None:
         self._enabled = enabled
         self._start_hz = start_hz
         self._stop_hz = stop_hz
@@ -25,7 +27,9 @@ class AudioFeedback:
         """Play a short beep indicating recording started."""
         if not self._enabled:
             return
-        threading.Thread(target=self._play_tone, args=(self._start_hz, 0.1), daemon=True).start()
+        threading.Thread(
+            target=self._play_tone, args=(self._start_hz, 0.1), daemon=True
+        ).start()
 
     def play_stop(self) -> None:
         """Play a short beep indicating recording stopped.

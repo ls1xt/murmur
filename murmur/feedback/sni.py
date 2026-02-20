@@ -138,9 +138,7 @@ class SniTray:
 
         self._loop = GLib.MainLoop()
         loop_run: Any = self._loop.run
-        self._loop_thread = threading.Thread(
-            target=loop_run, daemon=True
-        )
+        self._loop_thread = threading.Thread(target=loop_run, daemon=True)
         self._loop_thread.start()
         logger.info("SNI tray started (bus=%s)", self._bus_name)
 

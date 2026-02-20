@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 from murmur.feedback.audio import AudioFeedback
 
+
 class TestAudioFeedback:
     """Test AudioFeedback with mocked/disabled PyAudio."""
 
@@ -43,14 +44,19 @@ class TestAudioFeedback:
 
     def test_play_tone_noop_on_error(self, mocker: Any) -> None:
         """_play_tone is a no-op (logs warning) when sounddevice raises."""
-        mocker.patch("murmur.feedback.audio._sd.RawOutputStream", side_effect=Exception("no device"))
+        mocker.patch(
+            "murmur.feedback.audio._sd.RawOutputStream",
+            side_effect=Exception("no device"),
+        )
         # Should not raise
         AudioFeedback._play_tone(440, 0.1)
 
     def test_play_tone_with_mock_sounddevice(self, mocker: Any) -> None:
         """_play_tone opens a stream, writes samples, and closes it."""
         mock_stream = MagicMock()
-        mocker.patch("murmur.feedback.audio._sd.RawOutputStream", return_value=mock_stream)
+        mocker.patch(
+            "murmur.feedback.audio._sd.RawOutputStream", return_value=mock_stream
+        )
 
         AudioFeedback._play_tone(440, 0.05)
 

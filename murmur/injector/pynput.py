@@ -31,14 +31,10 @@ def _sanitize_text(text: str) -> str:
     a newline would submit the current input buffer.  Only printable Unicode
     characters (general category != C*) are kept.
     """
-    clean = "".join(
-        ch for ch in text if unicodedata.category(ch)[0] != "C"
-    )
+    clean = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")
     removed = len(text) - len(clean)
     if removed:
-        logger.warning(
-            "Sanitized %d control character(s) from injection text", removed
-        )
+        logger.warning("Sanitized %d control character(s) from injection text", removed)
     return clean
 
 
@@ -65,6 +61,7 @@ class PynputInjector(TextInjector):
             from ApplicationServices import (
                 AXIsProcessTrusted,  # type: ignore[import-untyped]
             )
+
             return bool(AXIsProcessTrusted())
         except ImportError:
             # Cannot verify without pyobjc; assume available

@@ -38,12 +38,14 @@ _session_var: contextvars.ContextVar[int] = contextvars.ContextVar(
     "murmur_session", default=0
 )
 
+
 class _SessionFilter(logging.Filter):
     """Injects ``session`` into every LogRecord from any thread."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.session = _session_var.get()  # type: ignore[attr-defined]
         return True
+
 
 class DictationApp:
     """
@@ -142,7 +144,8 @@ class DictationApp:
             self._clipboard_buffer = []
         if full_text:
             logger.info(
-                "Clipboard mode: copying full session to clipboard (%d chars)", len(full_text)
+                "Clipboard mode: copying full session to clipboard (%d chars)",
+                len(full_text),
             )
             self.injector.copy_to_clipboard(full_text)
             self.notifier.info("Copied to clipboard")
@@ -167,10 +170,14 @@ class DictationApp:
             return  # Don't inject partials in clipboard mode
         if not self.config.transcriber.inject_partials:
             return  # Only inject on final turns
-        logger.info("Partial transcript received: %r (last_partial=%r)", text[:120], self._last_partial[:80])
+        logger.info(
+            "Partial transcript received: %r (last_partial=%r)",
+            text[:120],
+            self._last_partial[:80],
+        )
         with self._inject_lock:
             if text.startswith(self._last_partial):
-                suffix = text[len(self._last_partial):]
+                suffix = text[len(self._last_partial) :]
                 if suffix:
                     logger.info("Injecting delta suffix: %r", suffix[:80])
                     self.injector.inject_raw(suffix)
@@ -183,9 +190,7 @@ class DictationApp:
                     text[:80],
                 )
                 if self._last_partial:
-                    self.injector.inject_backspaces(
-                        len(self._last_partial)
-                    )
+                    self.injector.inject_backspaces(len(self._last_partial))
                 self.injector.inject_raw(text)
             self._last_partial = text
 
@@ -200,13 +205,18 @@ class DictationApp:
         with partials.
         """
         _session_var.set(self._session_id)  # propagate session to SDK thread
-        logger.info("Final transcript received: %r (last_partial=%r)", text[:120], self._last_partial[:80])
+        logger.info(
+            "Final transcript received: %r (last_partial=%r)",
+            text[:120],
+            self._last_partial[:80],
+        )
         with self._inject_lock:
             if self._last_partial:
-                logger.info("Backspacing %d partial chars before final inject", len(self._last_partial))
-                self.injector.inject_backspaces(
-                    len(self._last_partial)
+                logger.info(
+                    "Backspacing %d partial chars before final inject",
+                    len(self._last_partial),
                 )
+                self.injector.inject_backspaces(len(self._last_partial))
                 self._last_partial = ""
             if not text.strip():
                 logger.info("Final text was empty/whitespace, skipping")
@@ -381,13 +391,19 @@ def _cmd_config(args: argparse.Namespace) -> None:
 
 def _cmd_list_mics(_args: argparse.Namespace) -> None:
     """Handle: murmur list-mics"""
-    import sounddevice as _sd  # type: ignore[import-untyped]
     from typing import Any as _Any
+
+    import sounddevice as _sd  # type: ignore[import-untyped]
+
     devices: _Any = _sd.query_devices()
     print("Available input devices:")
     print(f"  {'IDX':>3}  {'NAME':<40}  CHANNELS  RATE")
-    print(f"  {'-'*3}  {'-'*40}  {'-'*8}  {'-'*8}")
-    default_input = _sd.default.device[0] if isinstance(_sd.default.device, (list, tuple)) else _sd.default.device
+    print(f"  {'-' * 3}  {'-' * 40}  {'-' * 8}  {'-' * 8}")
+    default_input = (
+        _sd.default.device[0]
+        if isinstance(_sd.default.device, (list, tuple))
+        else _sd.default.device
+    )
     for i, dev in enumerate(devices):
         if dev.get("max_input_channels", 0) > 0:
             marker = " *" if i == default_input else "  "
@@ -424,6 +440,7 @@ def _cmd_record(args: argparse.Namespace) -> None:
         )
         try:
             from murmur.setup_wizard import prompt_setup  # type: ignore[import-not-found]  # noqa: I001
+
             if not prompt_setup(config):  # type: ignore[no-untyped-call]
                 fatal(msg)
         except ImportError:
@@ -483,6 +500,7 @@ def _cmd_daemon(args: argparse.Namespace) -> None:
     elif action == "enable":
         # Look for install-service.sh relative to the package
         import importlib.util
+
         spec = importlib.util.find_spec("murmur")
         install_script: str | None = None
         if spec and spec.origin:

@@ -11,6 +11,7 @@ Wayland's input restrictions. Supports three injection strategies:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import shutil
 import subprocess
@@ -30,14 +31,10 @@ def _sanitize_text(text: str) -> str:
     a newline would submit the current input buffer.  Only printable Unicode
     characters (general category != C*) are kept.
     """
-    clean = "".join(
-        ch for ch in text if unicodedata.category(ch)[0] != "C"
-    )
+    clean = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")
     removed = len(text) - len(clean)
     if removed:
-        logger.warning(
-            "Sanitized %d control character(s) from injection text", removed
-        )
+        logger.warning("Sanitized %d control character(s) from injection text", removed)
     return clean
 
 
@@ -197,10 +194,8 @@ class YdotoolInjector(TextInjector):
         # Kill previous wl-copy if still running (covers both copy_to_clipboard
         # and _inject_via_clipboard procs since both store into _wl_copy_proc).
         if self._wl_copy_proc is not None:
-            try:
+            with contextlib.suppress(OSError):
                 self._wl_copy_proc.kill()
-            except OSError:
-                pass
             self._wl_copy_proc = None
         logger.debug("Copying to clipboard: %r", text[:80])
         try:
@@ -219,9 +214,7 @@ class YdotoolInjector(TextInjector):
         ret = self._wl_copy_proc.poll()
         if ret is not None:
             stderr_bytes = (
-                self._wl_copy_proc.stderr.read()
-                if self._wl_copy_proc.stderr
-                else b""
+                self._wl_copy_proc.stderr.read() if self._wl_copy_proc.stderr else b""
             )
             err = stderr_bytes.decode(errors="replace").strip()
             logger.error(
@@ -240,9 +233,12 @@ class YdotoolInjector(TextInjector):
             self._ydotool_path,
             "type",
             "--clearmodifiers",
-            "--key-delay", "0",
-            "--key-hold", "0",
-            "--", text,
+            "--key-delay",
+            "0",
+            "--key-hold",
+            "0",
+            "--",
+            text,
         ]
         logger.debug("Injecting raw via ydotool: %r", text[:80])
         try:
@@ -305,10 +301,8 @@ class YdotoolInjector(TextInjector):
         # prior inject) before starting a new one.  Untracked orphans steal
         # Wayland clipboard ownership without being cleanable later.
         if self._wl_copy_proc is not None:
-            try:
+            with contextlib.suppress(OSError):
                 self._wl_copy_proc.kill()
-            except OSError:
-                pass
             self._wl_copy_proc = None
 
         # Write to Wayland clipboard.

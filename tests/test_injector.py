@@ -143,9 +143,7 @@ class TestInjectRawAndBackspaces:
 
         mock_run.assert_not_called()
 
-    def test_inject_backspaces_calls_ydotool_key(
-        self, mocker: Any
-    ) -> None:
+    def test_inject_backspaces_calls_ydotool_key(self, mocker: Any) -> None:
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
         mock_run.return_value = MagicMock(returncode=0)
         _mock_which(mocker)
@@ -300,7 +298,9 @@ class TestInjectRawStrategyRouting:
         assert "wl-copy" in wl_copy_args[0]
         assert "café" in wl_copy_args
 
-    def test_inject_raw_clipboard_strategy_always_uses_clipboard(self, mocker: Any) -> None:
+    def test_inject_raw_clipboard_strategy_always_uses_clipboard(
+        self, mocker: Any
+    ) -> None:
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
         mock_run.return_value = MagicMock(returncode=0)
         _mock_which(mocker)
@@ -363,7 +363,7 @@ class TestSanitizeText:
         args: list[str] = mock_run.call_args[0][0]
         injected_text = args[-1]
         assert "\n" not in injected_text
-        assert "helloworld" == injected_text
+        assert injected_text == "helloworld"
 
 
 class TestCopyToClipboard:
