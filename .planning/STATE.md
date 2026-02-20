@@ -60,6 +60,8 @@ Recent decisions affecting current work:
 - SNI tray backend extracted to sni.py for pyright strict mode compatibility
 - Delta partial injection: suffix-only injection, backspace-and-replace on diverge
 - First audio error at WARNING, subsequent at DEBUG
+- [Phase 05-01]: Use raw keyboard.Listener with manual modifier set tracking (not GlobalHotKeys) -- GlobalHotKeys silently fails for Ctrl+Alt on macOS (pynput issue #297)
+- [Phase 05-01]: No event suppression on macOS -- keys pass through; grab-and-forward is Linux-only (evdev)
 - [Phase 05-02]: Copy _sanitize_text verbatim per-module to avoid coupling macOS backend to Linux ydotool module
 - [Phase 05-02]: clipboard-fallback as default strategy: Controller.type() for ASCII, pbcopy+Cmd+V for non-ASCII
 - [Phase 05-02]: is_available() returns True on ImportError (no pyobjc) for graceful dev-machine fallback
@@ -90,4 +92,4 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed 05-03-PLAN.md (murmur/platform macOS permission detection)
+Stopped at: Completed 05-01-PLAN.md (PynputHotkeyListener for macOS hotkey detection)
