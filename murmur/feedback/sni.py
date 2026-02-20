@@ -19,20 +19,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Icon colors: (fill, outline) per state
-_STATE_COLORS: dict[str, tuple[str, str]] = {
-    "idle": ("#888888", "#444444"),
-    "recording": ("#ff3333", "#cc0000"),
-    "error": ("#ff9933", "#cc6600"),
-}
-
-_STATE_TITLES: dict[str, str] = {
-    "idle": "Idle",
-    "recording": "Recording",
-    "error": "Error",
-}
-
-ICON_SIZE = 64
+from murmur.feedback._tray_common import (
+    ICON_SIZE,
+    _STATE_TITLES,
+    create_icon_image as _create_icon_image,
+)
 
 # SNI D-Bus XML interface definition (minimal)
 _SNI_XML = """\
@@ -60,24 +51,6 @@ _SNI_XML = """\
   </interface>
 </node>
 """
-
-
-def _create_icon_image(state: str) -> Any:
-    """Create a 64x64 RGBA PIL image with a colored circle for the state."""
-    from PIL import Image, ImageDraw  # type: ignore[import-untyped]
-
-    fill, outline = _STATE_COLORS.get(state, _STATE_COLORS["idle"])
-
-    img: Any = Image.new("RGBA", (ICON_SIZE, ICON_SIZE), (0, 0, 0, 0))
-    draw: Any = ImageDraw.Draw(img)
-    margin = 4
-    draw.ellipse(
-        [margin, margin, ICON_SIZE - margin, ICON_SIZE - margin],
-        fill=fill,
-        outline=outline,
-        width=2,
-    )
-    return img
 
 
 def _rgba_to_argb32(img: Any) -> bytes:
@@ -226,7 +199,7 @@ class SniTray:
             return _v("b", False)
         return None
 
-    def set_state(self, state: str) -> None:
+    def set_state(self, state: str, reason: str = "") -> None:
         """Update the SNI state. Thread-safe via GLib.idle_add."""
         self._state = state
         try:

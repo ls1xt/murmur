@@ -5,25 +5,18 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from murmur.feedback.tray import TrayIcon, _create_icon_image
+from murmur.feedback.tray_pystray import PystrayTray
 
 
 class TestTrayIconGracefulDegradation:
     """Test graceful handling when pystray is unavailable."""
 
     @patch("murmur.feedback.tray.TrayIcon._is_sway", return_value=False)
-    @patch("murmur.feedback.tray.pystray", create=True)
-    def test_start_graceful_on_import_error(
-        self, _mock_pystray: object, _mock_sway: object
-    ) -> None:
-        """If pystray import fails, tray stays unavailable without crash."""
+    def test_start_graceful_on_import_error(self, _mock_sway: object) -> None:
+        """If pystray backend raises, tray stays unavailable without crash."""
         tray = TrayIcon()
-        with (
-            patch.dict("sys.modules", {"pystray": None}),
-            patch(
-                "builtins.__import__",
-                side_effect=ImportError("no pystray"),
-            ),
-        ):
+        with patch("murmur.feedback.tray_pystray.PystrayTray") as MockPystray:
+            MockPystray.side_effect = Exception("no pystray")
             tray.start()
         assert not tray.available
 
@@ -85,18 +78,18 @@ class TestTrayIconMenu:
 
     def test_status_text_idle(self) -> None:
         """Status text returns 'Idle' for idle state."""
-        tray = TrayIcon()
+        tray = PystrayTray()
         assert tray._status_text() == "Idle"
 
     def test_status_text_recording(self) -> None:
         """Status text returns 'Recording' for recording state."""
-        tray = TrayIcon()
+        tray = PystrayTray()
         tray._state = "recording"
         assert tray._status_text() == "Recording"
 
     def test_status_text_error_with_reason(self) -> None:
         """Status text includes error reason."""
-        tray = TrayIcon()
+        tray = PystrayTray()
         tray._state = "error"
         tray._error_reason = "ydotoold not running"
         assert tray._status_text() == "Error: ydotoold not running"
@@ -104,13 +97,13 @@ class TestTrayIconMenu:
     def test_quit_callback_fires(self) -> None:
         """Quit menu item calls on_quit callback."""
         mock_quit = MagicMock()
-        tray = TrayIcon(on_quit=mock_quit)
+        tray = PystrayTray(on_quit=mock_quit)
         tray._on_quit_clicked()
         mock_quit.assert_called_once()
 
     def test_quit_callback_none_no_crash(self) -> None:
         """Quit with no callback does not crash."""
-        tray = TrayIcon(on_quit=None)
+        tray = PystrayTray(on_quit=None)
         tray._on_quit_clicked()  # Should not raise
 
 
@@ -136,22 +129,20 @@ class TestTrayIconSniDetection:
             mock_sni.assert_called_once()
 
     def test_sni_set_state_delegates(self) -> None:
-        """set_state delegates to SNI backend when _use_sni is True."""
+        """set_state delegates to backend when available."""
         tray = TrayIcon()
         tray._available = True
-        tray._use_sni = True
-        mock_sni = MagicMock()
-        tray._sni = mock_sni
+        mock_backend = MagicMock()
+        tray._backend = mock_backend
 
         tray.set_state("recording")
-        mock_sni.set_state.assert_called_once_with("recording")
+        mock_backend.set_state.assert_called_once_with("recording", "")
 
     def test_sni_stop_delegates(self) -> None:
-        """stop delegates to SNI backend when _use_sni is True."""
+        """stop delegates to backend."""
         tray = TrayIcon()
-        tray._use_sni = True
-        mock_sni = MagicMock()
-        tray._sni = mock_sni
+        mock_backend = MagicMock()
+        tray._backend = mock_backend
 
         tray.stop()
-        mock_sni.stop.assert_called_once()
+        mock_backend.stop.assert_called_once()
