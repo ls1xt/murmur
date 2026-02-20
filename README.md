@@ -1,5 +1,7 @@
 # Murmur — System-Wide Voice Dictation
 
+[![CI](https://github.com/berleon/murmur/actions/workflows/ci.yml/badge.svg)](https://github.com/berleon/murmur/actions/workflows/ci.yml)
+
 Push-to-talk dictation that works in **any application** on Linux (Wayland) and macOS.
 Hold a hotkey, speak, release — your words appear at the cursor.
 
