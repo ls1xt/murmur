@@ -29,6 +29,12 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **UX-01**: System tray icon shows recording state (idle/recording/error) with graceful degradation when AppIndicator unavailable
 - [ ] **UX-02**: Desktop notifications on errors (ydotoold not running, WebSocket disconnect, permission issues) via D-Bus with notify-send fallback
 
+### Distribution
+
+- [ ] **DIST-01**: CLI subcommand structure (murmur config / record / daemon) for installable package UX
+- [ ] **DIST-02**: Package manager distribution: Homebrew formula, AUR PKGBUILD, .deb package, PyPI
+- [ ] **DIST-03**: Guided first-run setup: auto-prompt for API key if missing, with GUI (customtkinter) or terminal fallback
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -43,13 +49,11 @@ Deferred to future release. Tracked but not in current roadmap.
 
 - **UX-03**: Live transcript overlay (floating window showing words as they arrive)
 - **UX-04**: Per-application profiles (different hotkeys/behavior per app)
-- **UX-05**: Custom vocabulary / keyterms prompting via config
+- **UX-05**: Custom vocabulary / keyterms prompting via config *(pulled into Phase 7 — implemented via setup_wizard.py and TranscriberConfig.keyterms)*
 
 ### Distribution
 
-- **DIST-01**: Systemd user service file for auto-start
-- **DIST-02**: AUR / .deb / .rpm packaging
-- **DIST-03**: One-line install script
+- **DIST-04**: RPM packaging (Fedora/RHEL) — deferred, add to backlog if needed
 
 ## Out of Scope
 
@@ -60,6 +64,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | Voice commands (dictate/delete/select) | Massive scope increase, different product |
 | Real-time partial text injection into cursor | Already works via live turn injection; no changes needed |
 | Flatpak packaging | uinput portal permissions add complexity |
+| RPM packaging | Not in scope for Phase 7; tracked as DIST-04 |
 
 ## Traceability
 
@@ -80,12 +85,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RELY-05 | Phase 2 | Pending |
 | UX-01 | Phase 3 | Pending |
 | UX-02 | Phase 3 | Pending |
+| DIST-01 | Phase 7 | Pending |
+| DIST-02 | Phase 7 | Pending |
+| DIST-03 | Phase 7 | Pending |
+| UX-05 | Phase 7 | Pending (pulled from v2) |
 
 **Coverage:**
-- v1 requirements: 13 total
-- Mapped to phases: 13
+- v1 requirements: 16 total (added DIST-01, DIST-02, DIST-03; UX-05 promoted from v2)
+- Mapped to phases: 16
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2025-02-17*
-*Last updated: 2026-02-17 after roadmap creation*
+*Last updated: 2026-02-20 — Phase 7 planning: added DIST-01/02/03, promoted UX-05 from v2*
