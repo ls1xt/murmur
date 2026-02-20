@@ -1,0 +1,10 @@
+post_install() {
+    echo ""
+    echo ">>> Murmur installed. Run 'murmur config' to set your AssemblyAI API key."
+    echo ">>> To enable auto-start: systemctl --user enable --now murmur"
+    echo ""
+}
+
+post_upgrade() {
+    post_install
+}

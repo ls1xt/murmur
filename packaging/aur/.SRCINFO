@@ -1,0 +1,23 @@
+pkgbase = python-murmur
+	pkgdesc = System-wide voice dictation for Linux and macOS
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/berleon/murmur
+	arch = x86_64
+	license = MIT
+	makedepends = python-build
+	makedepends = python-installer
+	makedepends = python-wheel
+	makedepends = python-hatchling
+	depends = python>=3.10
+	depends = python-pillow
+	depends = python-pystray
+	depends = python-sounddevice
+	depends = portaudio
+	optdepends = ydotool: text injection on Wayland (Linux)
+	optdepends = python-evdev: keyboard hotkey detection on Linux
+	install = python-murmur.install
+	source = https://files.pythonhosted.org/packages/source/m/murmur-dictation/murmur_dictation-0.1.0.tar.gz
+	sha256sums = PLACEHOLDER_SHA256_AFTER_PYPI_PUBLISH
+
+pkgname = python-murmur

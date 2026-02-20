@@ -1,0 +1,45 @@
+# Maintainer: Leon Sixt <leon@berleon.eu>
+pkgname=python-murmur
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="System-wide voice dictation for Linux and macOS"
+arch=('x86_64')
+url="https://github.com/berleon/murmur"
+license=('MIT')
+depends=(
+    'python>=3.10'
+    'python-pillow'
+    'python-pystray'
+    'python-sounddevice'
+    'portaudio'
+)
+makedepends=(
+    'python-build'
+    'python-installer'
+    'python-wheel'
+    'python-hatchling'
+)
+# Note: assemblyai and customtkinter are NOT in official Arch repos.
+# They will be installed as pip dependencies bundled in the package.
+optdepends=(
+    'ydotool: text injection on Wayland (Linux)'
+    'python-evdev: keyboard hotkey detection on Linux'
+)
+source=("https://files.pythonhosted.org/packages/source/m/murmur-dictation/murmur_dictation-${pkgver}.tar.gz")
+sha256sums=('PLACEHOLDER_SHA256_AFTER_PYPI_PUBLISH')
+install=python-murmur.install
+
+build() {
+    cd "murmur_dictation-${pkgver}"
+    python -m build --wheel --no-isolation
+}
+
+package() {
+    cd "murmur_dictation-${pkgver}"
+    python -m installer --destdir="$pkgdir" dist/*.whl
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    # Install systemd service file if present
+    if [[ -f "murmur.service" ]]; then
+        install -Dm644 murmur.service "${pkgdir}/usr/lib/systemd/user/murmur.service"
+    fi
+}
