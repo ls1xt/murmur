@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Hold a key and talk -- text appears wherever you're typing, in any application, instantly and reliably.
-**Current focus:** Phase 6 -- Tooling and Integration (Linux and macOS setup, service, install)
+**Current focus:** Phase 6 complete -- all roadmap phases done
 
 ## Current Position
 
 Phase: 6 of 6 (Tooling and Integration -- Linux and macOS setup, service, install)
-Plan: 0 of 0 in current phase
-Status: Ready to plan
-Last activity: 2026-02-20 - Completed Phase 5 (macOS coding support — all 4 plans)
+Plan: 2 of 2 in current phase
+Status: Complete
+Last activity: 2026-02-20 - Completed Phase 6 (tooling and integration — all 2 plans)
 
-Progress: [████████████████████] ~83% (15/18 estimated plans)
+Progress: [████████████████████] 100% (17/17 estimated plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
-- Average duration: ~8 minutes
-- Total execution time: ~87 minutes
+- Total plans completed: 14
+- Average duration: ~7 minutes
+- Total execution time: ~92 minutes
 
 **By Phase:**
 
@@ -32,9 +32,10 @@ Progress: [████████████████████] ~83% (1
 | 3. UX | 2/2 | ~10 min | ~5 min |
 | 4. Interaction Polish | 3/3 | ~18 min | ~6 min |
 | 5. macOS Coding Support | 4/4 | ~10 min | ~2.5 min |
+| 6. Tooling and Integration | 2/2 | ~5 min | ~2.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-01, 04-02, 04-03, 05-03, 05-04
+- Last 5 plans: 05-02, 05-03, 05-04, 06-01, 06-02
 - Trend: Consistent, fast
 
 *Updated after each plan completion*
@@ -70,6 +71,9 @@ Recent decisions affecting current work:
 - [Phase 05-03]: ImportError fallback returns True (not False) -- cannot verify permission, assume ok, let actual runtime fail with a useful error if missing
 - [Phase 05-04]: Added missing import sys to main.py (was absent; plan assumed present but was not) -- Rule 3 auto-fix
 - [Phase 05-04]: darwin startup block uses elif for linux ydotoold check, replacing unconditional check -- preserves linux semantics exactly
+- [Phase 06-01]: Service file templates use @@MURMUR_DIR@@ placeholder instead of hardcoded paths -- sed substitution in install-service.sh is clean and portable
+- [Phase 06-01]: murmur.plist uses KeepAlive.SuccessfulExit: false to match Restart=on-failure semantics (restart on crash, not clean exit)
+- [Phase 06-02]: setup.sh and run.sh both use uname -s for OS detection; macOS branch skips all ydotoold/input-group/ALSA concerns
 
 ### Pending Todos
 
