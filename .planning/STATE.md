@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-17)
 
 **Core value:** Hold a key and talk -- text appears wherever you're typing, in any application, instantly and reliably.
-**Current focus:** Phase 4 -- Interaction Polish
+**Current focus:** Phase 5 -- macOS Coding Support
 
 ## Current Position
 
-Phase: 4 of 4 (Interaction Polish)
-Plan: 3 of 3 in current phase
-Status: Phase complete, awaiting verification
-Last activity: 2026-02-18 - Completed all Phase 4 plans (04-01, 04-02, 04-03)
+Phase: 5 of 6 (macOS Coding Support -- Hotkey, Injector, Clipboard Backends)
+Plan: 3 of N in current phase
+Status: In progress -- 05-03 complete
+Last activity: 2026-02-20 - Completed 05-03 (murmur/platform macOS permission checks)
 
-Progress: [████████████████████] 100%
+Progress: [████████████████░░░░] ~80%
 
 ## Performance Metrics
 
@@ -31,9 +31,10 @@ Progress: [████████████████████] 100%
 | 2. Reliability | 3/3 | ~9 min | ~3 min |
 | 3. UX | 2/2 | ~10 min | ~5 min |
 | 4. Interaction Polish | 3/3 | ~18 min | ~6 min |
+| 5. macOS Coding Support | 1+/N | ~4 min | ~4 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-01, 03-02, 04-01, 04-02, 04-03
+- Last 5 plans: 04-01, 04-02, 04-03, 05-03
 - Trend: Consistent, fast
 
 *Updated after each plan completion*
@@ -59,6 +60,9 @@ Recent decisions affecting current work:
 - SNI tray backend extracted to sni.py for pyright strict mode compatibility
 - Delta partial injection: suffix-only injection, backspace-and-replace on diverge
 - First audio error at WARNING, subsequent at DEBUG
+- [Phase 05-02]: Copy _sanitize_text verbatim per-module to avoid coupling macOS backend to Linux ydotool module
+- [Phase 05-02]: clipboard-fallback as default strategy: Controller.type() for ASCII, pbcopy+Cmd+V for non-ASCII
+- [Phase 05-02]: is_available() returns True on ImportError (no pyobjc) for graceful dev-machine fallback
 
 ### Pending Todos
 

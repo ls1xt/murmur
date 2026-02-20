@@ -100,7 +100,7 @@ Plans:
 
 **Goal:** Add macOS runtime support at the code level — pynput hotkey backend, pynput+pbcopy injector backend, macOS clipboard backend, and macOS permission detection. No tooling, service files, or shell scripts.
 **Depends on:** Phase 4
-**Plans:** 4 plans
+**Plans:** 3/4 plans executed
 
 Plans:
 - [ ] 05-01-PLAN.md — PynputHotkeyListener: macOS hotkey backend with manual modifier-set tracking
