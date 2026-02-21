@@ -101,7 +101,7 @@ class InjectorConfig:
     ydotool_path: str = "ydotool"
     trailing_space: bool = True
     key_delay: int = 0
-    inject_strategy: str = "clipboard-fallback"
+    inject_strategy: str = "clipboard"
 
 
 @dataclass
@@ -177,7 +177,7 @@ class DictationConfig:
         if api_key := os.environ.get("ASSEMBLYAI_API_KEY"):
             config.transcriber.api_key = api_key
 
-        if log_level := os.environ.get("DICTATION_LOG_LEVEL"):
+        if log_level := os.environ.get("MURMUR_LOG_LEVEL") or os.environ.get("DICTATION_LOG_LEVEL"):
             config.log_level = log_level
 
         if backend := os.environ.get("DICTATION_HOTKEY_BACKEND"):

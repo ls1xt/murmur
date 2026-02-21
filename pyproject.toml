@@ -38,6 +38,7 @@ dependencies = [
     "sounddevice>=0.5.5",
     "pynput>=1.7.0; sys_platform == 'darwin'",
     "pyobjc-framework-ApplicationServices>=9.0; sys_platform == 'darwin'",
+    "pyobjc-framework-AVFoundation>=9.0; sys_platform == 'darwin'",
 ]
 
 [project.urls]

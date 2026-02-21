@@ -63,10 +63,17 @@ case "$OS" in
         ;;
 
     Darwin*)
-        # macOS: ydotoold not needed (uses pynput + pbcopy injector)
-        # Accessibility permissions handled at runtime by DictationApp.run()
-        # CoreAudio backend produces no ALSA/JACK noise — no stderr filter needed
-        "$SCRIPT_DIR/.venv/bin/murmur" "$@"
+        # macOS: launch via Murmur.app so that macOS associates the daemon
+        # process with the bundle identity com.murmur.daemon.  Users grant
+        # Accessibility permission to Murmur.app in System Settings rather
+        # than to the raw Python binary (which cannot be added via the UI).
+        APP_LAUNCHER="$SCRIPT_DIR/Murmur.app/Contents/MacOS/murmur"
+        if [ -x "$APP_LAUNCHER" ]; then
+            "$APP_LAUNCHER" "$@"
+        else
+            # Fallback if the .app bundle is missing (re-run setup.sh)
+            "$SCRIPT_DIR/.venv/bin/murmur" "$@"
+        fi
         ;;
 
     *)

@@ -14,6 +14,7 @@ dependency; an ImportError here surfaces a clear message to the user.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 from pynput import keyboard
@@ -172,8 +173,22 @@ class PynputHotkeyListener(HotkeyListener):
         self._bindings: list[_ResolvedBinding] = _resolve_bindings(bindings)
         self._held: set[Key | KeyCode] = set()
         self._listener: keyboard.Listener | None = None
-        # push_to_talk_debounce_ms stored for API compatibility; unused on macOS.
         self._push_to_talk_debounce_ms: int = push_to_talk_debounce_ms
+        # Monotonic timestamp of the last push-to-talk real release.
+        # macOS generates phantom Space-press events immediately after release
+        # (while Ctrl+Option are still held) and also phantom Space-release
+        # events that can arrive seconds later.  We block re-activation for
+        # push_to_talk_debounce_ms after the real release to suppress both.
+        # Note: we cannot rely on Ctrl/Alt release events to clear the guard
+        # because macOS does not deliver modifier-key releases through the
+        # CGEventTap in this configuration.
+        self._ptt_last_release_time: float = 0.0
+        # True between a dispatched push_to_talk press and its release.
+        # Phantom Space-release events from macOS can arrive seconds after the
+        # real release and fire again during a subsequent session (when Space
+        # is back in self._held).  Gating release dispatch on this flag ensures
+        # each press is matched to exactly one release.
+        self._ptt_press_dispatched: bool = False
 
     def start(self) -> None:
         """Start listening for hotkeys in a background thread.
@@ -190,6 +205,25 @@ class PynputHotkeyListener(HotkeyListener):
             on_release=self._on_release,
         )
         self._listener.start()
+
+        # Re-canonicalize binding keys using the live listener.  Some keys
+        # like Key.space (char=' ') have a different canonical form at runtime
+        # (e.g. KeyCode(vk=49) on macOS) than the object returned by
+        # _translate_evdev_name.  Without this step, Key.space in a binding
+        # would never match the <49> seen in on_press events.
+        self._bindings = [
+            _ResolvedBinding(
+                modifiers=frozenset(
+                    self._listener.canonical(m) for m in b.modifiers
+                ),
+                trigger=self._listener.canonical(b.trigger),
+                action=b.action,
+                tmux_target=b.tmux_target,
+                tmux_keys=b.tmux_keys,
+            )
+            for b in self._bindings
+        ]
+
         logger.info("pynput hotkey listener started")
 
         for binding in self._bindings:
@@ -206,6 +240,8 @@ class PynputHotkeyListener(HotkeyListener):
             self._listener.stop()
             self._listener = None
         self._held.clear()
+        self._ptt_last_release_time = 0.0
+        self._ptt_press_dispatched = False
         logger.info("pynput hotkey listener stopped")
 
     def _on_press(self, key: Key | KeyCode | None) -> None:
@@ -221,15 +257,34 @@ class PynputHotkeyListener(HotkeyListener):
             self._listener.canonical(key) if self._listener is not None else key
         )
         self._held.add(canonical)
+        logger.debug("KEY PRESS  raw=%r  canonical=%r  held=%r", key, canonical, self._held)
 
         for binding in self._bindings:
             if binding.trigger == canonical and binding.modifiers.issubset(self._held):
+                # Block push-to-talk re-activation within debounce window.
+                # macOS generates phantom Space-press events immediately after
+                # release (key-repeat while Ctrl+Option still held).  A short
+                # debounce suppresses them; modifier-release tracking is
+                # unreliable because macOS does not deliver Ctrl/Alt release
+                # events through the CGEventTap in this configuration.
+                if binding.action in ("push_to_talk", "copy_to_clipboard"):
+                    debounce_s = self._push_to_talk_debounce_ms / 1000.0
+                    elapsed = time.monotonic() - self._ptt_last_release_time
+                    if elapsed < debounce_s:
+                        logger.debug(
+                            "Ignoring %s: debounce (%.0fms remaining)",
+                            binding.action,
+                            (debounce_s - elapsed) * 1000,
+                        )
+                        continue
                 logger.debug(
                     "Hotkey pressed: %s+%s -> %s",
                     "+".join(str(m) for m in binding.modifiers),
                     binding.trigger,
                     binding.action,
                 )
+                if binding.action in ("push_to_talk", "copy_to_clipboard"):
+                    self._ptt_press_dispatched = True
                 self._dispatch_action(
                     binding.action,
                     binding.tmux_target,
@@ -249,14 +304,39 @@ class PynputHotkeyListener(HotkeyListener):
         canonical: Key | KeyCode = (
             self._listener.canonical(key) if self._listener is not None else key
         )
+        logger.debug("KEY RELEASE raw=%r  canonical=%r", key, canonical)
 
         for binding in self._bindings:
-            if binding.trigger == canonical and binding.trigger in self._held:
+            if (
+                binding.trigger == canonical
+                and binding.trigger in self._held
+                and binding.modifiers.issubset(self._held)
+            ):
                 logger.debug(
                     "Hotkey released: %s -> %s",
                     binding.trigger,
                     binding.action,
                 )
-                self._dispatch_release(binding.action)
+                if binding.action in ("push_to_talk", "copy_to_clipboard"):
+                    if not self._ptt_press_dispatched:
+                        # Phantom release from a previous session: Space is
+                        # back in self._held (new session) but no matching
+                        # press was dispatched in this session yet.  Drop it.
+                        logger.debug(
+                            "Ignoring phantom release for %s (no press in flight)",
+                            binding.action,
+                        )
+                        continue
+                    self._ptt_press_dispatched = False
+                    self._dispatch_release(binding.action)
+                    # Set debounce timestamp AFTER dispatch returns.
+                    # _dispatch_release calls _on_deactivate which calls
+                    # feedback.play_stop() -- a blocking ~100 ms beep.
+                    # If we set the timestamp before dispatch, the beep
+                    # consumes part of the debounce window and phantom
+                    # Space presses buffered in the pynput queue slip through.
+                    self._ptt_last_release_time = time.monotonic()
+                else:
+                    self._dispatch_release(binding.action)
 
         self._held.discard(canonical)

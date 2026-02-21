@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "=== Murmur Setup ==="
 echo ""
 
@@ -71,9 +73,6 @@ case "$OS" in
         brew install portaudio
 
         echo ""
-        echo "NOTE: Microphone and Accessibility permissions are required."
-        echo "  These will be requested by macOS on first run."
-        echo ""
         ;;
 
     *)
@@ -86,6 +85,73 @@ esac
 # Create venv and install (both platforms)
 echo "Running uv sync..."
 uv sync
+
+# Create/refresh Murmur.app bundle on macOS so hotkeys can be granted
+# Accessibility permission via System Settings (raw Python binaries cannot
+# be added to the Accessibility list through the UI).
+if [ "$OS" = "Darwin" ]; then
+    APP_DIR="$SCRIPT_DIR/Murmur.app/Contents"
+    mkdir -p "$APP_DIR/MacOS"
+
+    cat > "$APP_DIR/Info.plist" << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.murmur.daemon</string>
+    <key>CFBundleName</key>
+    <string>Murmur</string>
+    <key>CFBundleDisplayName</key>
+    <string>Murmur</string>
+    <key>CFBundleExecutable</key>
+    <string>murmur</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSAccessibilityUsageDescription</key>
+    <string>Murmur needs Accessibility access to detect global hotkeys for voice dictation.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Murmur needs Microphone access to capture audio for voice dictation.</string>
+</dict>
+</plist>
+EOF
+
+    # Write the launcher — exec replaces the shell with Python so that the
+    # process runs under the bundle's macOS identity (com.murmur.daemon).
+    cat > "$APP_DIR/MacOS/murmur" << 'LAUNCHER'
+#!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
+MURMUR_BIN="$PROJECT_DIR/.venv/bin/murmur"
+if [ ! -f "$MURMUR_BIN" ]; then
+    osascript -e 'display alert "Murmur" message "murmur not found in .venv. Run ./setup.sh first." as critical' 2>/dev/null || true
+    echo "ERROR: $MURMUR_BIN not found. Run ./setup.sh first." >&2
+    exit 1
+fi
+export PYTHONUNBUFFERED=1
+exec "$MURMUR_BIN" "$@"
+LAUNCHER
+
+    chmod +x "$APP_DIR/MacOS/murmur"
+
+    if codesign --force --deep --sign - "$SCRIPT_DIR/Murmur.app" 2>/dev/null; then
+        echo "Murmur.app created and signed (bundle ID: com.murmur.daemon)"
+    else
+        echo "WARNING: codesign failed; Murmur.app created but unsigned"
+    fi
+
+    echo ""
+    echo "NEXT STEP (required for hotkeys):"
+    echo "  Open System Settings → Privacy & Security → Accessibility"
+    echo "  Click + and add:  $SCRIPT_DIR/Murmur.app"
+    echo ""
+fi
 
 echo ""
 echo "=== Setup complete ==="

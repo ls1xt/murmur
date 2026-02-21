@@ -9,3 +9,4 @@ build/
 
 # PyPI publish artifacts
 .pypirc
+Murmur.app/

@@ -163,16 +163,19 @@ class AssemblyAITranscriber(Transcriber):
 
     def start(self) -> None:
         """Start mic capture and streaming to AssemblyAI."""
-        if self._is_streaming:
-            logger.warning("Already streaming")
-            return
-
-        # Wait for any in-progress stop() to finish before opening a new
-        # session -- prevents "Too many concurrent sessions" from AssemblyAI.
+        # Wait for any in-progress stop() to finish before claiming the slot.
+        # This prevents "Too many concurrent sessions" from AssemblyAI.
         if not self._stop_done.wait(timeout=5.0):
             logger.warning("Previous session did not stop cleanly; starting anyway")
 
-        self._is_streaming = True
+        # Atomic check-and-set: if two start() calls race past the wait above,
+        # only the first one to acquire _streaming_lock proceeds.  The second
+        # sees _streaming=True and exits without opening a second mic stream.
+        with self._streaming_lock:
+            if self._streaming:
+                logger.warning("Already streaming")
+                return
+            self._streaming = True
         self._all_text_this_session = []
         self._session_gen += 1
         my_gen = self._session_gen

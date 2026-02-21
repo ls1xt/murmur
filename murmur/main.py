@@ -17,6 +17,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 import threading
 import types
 
@@ -71,6 +72,8 @@ class DictationApp:
         self._clipboard_mode: bool = False  # True when action == copy_to_clipboard
         self._clipboard_buffer: list[str] = []  # accumulates turns in clipboard mode
         self._session_id: int = 0  # current session index; set before each start
+        self._recording_active: bool = False  # set synchronously in _on_activate/_on_deactivate
+        self._last_deactivate_time: float = 0.0  # monotonic time of last deactivation
 
         self.hotkey: HotkeyListener = create_hotkey_listener(config.hotkey)
         self.transcriber: Transcriber = create_transcriber(config.transcriber)
@@ -103,9 +106,17 @@ class DictationApp:
         "copy_to_clipboard" and determines what happens to the transcript.
         ``trigger`` is "hotkey" or "tray" and indicates what triggered recording.
         """
+        debounce_s = self.config.hotkey.push_to_talk_debounce_ms / 1000.0
         with self._lock:
-            if self.transcriber.is_streaming:
+            if self._recording_active:
                 return  # already recording
+            # Debounce: ignore activations fired within push_to_talk_debounce_ms of
+            # the last deactivation.  On macOS, Ctrl+Option+Space generates phantom
+            # key events that produce a second Space press immediately after release,
+            # causing runaway start/stop cycles without this guard.
+            if time.monotonic() - self._last_deactivate_time < debounce_s:
+                return
+            self._recording_active = True
             self._clipboard_mode = action == "copy_to_clipboard"
             self._clipboard_buffer = []
             self._session_id += 1
@@ -119,8 +130,10 @@ class DictationApp:
     def _on_deactivate(self) -> None:
         """Called when the hotkey is deactivated (stop recording)."""
         with self._lock:
-            if not self.transcriber.is_streaming:
+            if not self._recording_active:
                 return  # already stopped
+            self._recording_active = False
+            self._last_deactivate_time = time.monotonic()
         logger.info("Recording stopped")
         self.feedback.play_stop()
         self.notifier.info("Recording stopped")
@@ -304,7 +317,9 @@ class DictationApp:
 
     def _on_tray_activate(self) -> None:
         """Handle tray icon left-click: toggle recording on/off."""
-        if self.transcriber.is_streaming:
+        with self._lock:
+            active = self._recording_active
+        if active:
             self._on_deactivate()
         else:
             self._on_activate("push_to_talk", trigger="tray")
