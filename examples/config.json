@@ -1,0 +1,58 @@
+{
+  "hotkey": {
+    "bindings": [
+      {
+        "modifiers": [],
+        "trigger": "KEY_F12",
+        "action": "push_to_talk",
+        "suppress": true
+      },
+      {
+        "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTMETA"],
+        "trigger": "KEY_M",
+        "action": "toggle"
+      },
+      {
+        "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTMETA"],
+        "trigger": "KEY_C",
+        "action": "copy_to_clipboard"
+      },
+      {
+        "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTMETA"],
+        "trigger": "KEY_K",
+        "action": "toggle",
+        "language": "de"
+      },
+      {
+        "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTMETA"],
+        "trigger": "KEY_T",
+        "action": "toggle",
+        "inject_to": "tmux:todo:0.0",
+        "append_enter": true
+      }
+    ]
+  },
+  "transcriber": {
+    "api_key": "YOUR_API_KEY",
+    "language": "en",
+    "keyterms": []
+  },
+  "injector": {
+    "trailing_space": true,
+    "key_delay": 10,
+    "inject_strategy": "pynput"
+  },
+  "feedback": {
+    "start_hz": 440.0,
+    "stop_hz": 880.0,
+    "start_duration_ms": 80,
+    "stop_duration_ms": 80,
+    "amplitude": 0.3
+  },
+  "notify": {
+    "level": "errors"
+  },
+  "tray": {
+    "enabled": true
+  }
+}

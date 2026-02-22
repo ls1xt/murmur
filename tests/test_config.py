@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import json
 from pathlib import Path
 from typing import Any
 
@@ -172,3 +174,53 @@ class TestFromDict:
         data: dict[str, Any] = {}
         config = DictationConfig._from_dict(data)
         assert len(config.hotkey.bindings) == 3
+
+
+EXAMPLE_CONFIG = Path(__file__).parent.parent / "examples" / "config.json"
+
+
+class TestExampleConfig:
+    """Validate that examples/config.json stays in sync with the config schema."""
+
+    def test_example_config_exists(self) -> None:
+        assert EXAMPLE_CONFIG.exists(), "examples/config.json not found"
+
+    def test_example_config_parses(self) -> None:
+        data: dict[str, Any] = json.loads(EXAMPLE_CONFIG.read_text())
+        config = DictationConfig._from_dict(data)
+        assert isinstance(config, DictationConfig)
+
+    def test_example_config_keys_are_valid(self) -> None:
+        """Every top-level key in the example must map to a known config section."""
+        data: dict[str, Any] = json.loads(EXAMPLE_CONFIG.read_text())
+        known_sections = {f.name for f in dataclasses.fields(DictationConfig)}
+        for key in data:
+            assert key in known_sections, (
+                f"examples/config.json has unknown top-level key '{key}'. "
+                f"Known sections: {sorted(known_sections)}"
+            )
+
+    def test_example_config_section_keys_are_valid(self) -> None:
+        """Every key within each section must map to a known field on that dataclass."""
+        data: dict[str, Any] = json.loads(EXAMPLE_CONFIG.read_text())
+        section_map = {
+            "transcriber": TranscriberConfig,
+            "injector": InjectorConfig,
+            "feedback": FeedbackConfig,
+        }
+        for section, cls in section_map.items():
+            if section not in data:
+                continue
+            known_fields = {f.name for f in dataclasses.fields(cls)}
+            for key in data[section]:
+                assert key in known_fields, (
+                    f"examples/config.json [{section}] has unknown key '{key}'. "
+                    f"Known fields: {sorted(known_fields)}"
+                )
+
+    def test_example_config_has_no_real_api_key(self) -> None:
+        data: dict[str, Any] = json.loads(EXAMPLE_CONFIG.read_text())
+        api_key = data.get("transcriber", {}).get("api_key", "")
+        assert api_key == "YOUR_API_KEY", (
+            "examples/config.json contains a real API key — strip it before committing"
+        )

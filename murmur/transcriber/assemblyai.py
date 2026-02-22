@@ -160,6 +160,7 @@ class AssemblyAITranscriber(Transcriber):
         # Cleared at stop() start, set at stop() end so start() can wait.
         self._stop_done = threading.Event()
         self._stop_done.set()
+        self._current_language: str | None = None  # set on start(), used by _reconnect()
 
     def test_connection(self) -> None:
         """Warm PortAudio and the AssemblyAI WebSocket at startup.
@@ -273,17 +274,17 @@ class AssemblyAITranscriber(Transcriber):
         if self._config.keyterms_prompt:
             params_kwargs["keyterms_prompt"] = self._config.keyterms_prompt
         effective_language = language or self._config.language
-        if effective_language and effective_language != "en":
-            params_kwargs["language_code"] = effective_language
+        self._current_language = effective_language
+        # v3 API has no language_code input — use speech_model to select
+        # multilingual (non-English) vs English-optimised model.
+        if effective_language and not effective_language.startswith("en"):
+            params_kwargs["speech_model"] = _v3.SpeechModel.universal_streaming_multilingual
+            params_kwargs["language_detection"] = True
+        else:
+            params_kwargs["speech_model"] = _v3.SpeechModel.universal_streaming_english
         params: Any = _v3.StreamingParameters(**params_kwargs)
         logger.info(
-            "StreamingParameters: sample_rate=%d, format_turns=%s,"
-            " encoding=%s, keyterms=%s, language=%s",
-            self._config.sample_rate,
-            self._config.format_turns,
-            "pcm_s16le",
-            self._config.keyterms_prompt or [],
-            effective_language,
+            "StreamingParameters kwargs sent to AssemblyAI: %s", params_kwargs
         )
         # Open the mic stream BEFORE connecting so that audio captured during
         # the WebSocket handshake (~200-500 ms) is buffered in the queue and
@@ -490,6 +491,15 @@ class AssemblyAITranscriber(Transcriber):
                 }
                 if self._config.keyterms_prompt:
                     params_kwargs["keyterms_prompt"] = self._config.keyterms_prompt
+                if self._current_language and not self._current_language.startswith("en"):
+                    params_kwargs["speech_model"] = _v3.SpeechModel.universal_streaming_multilingual
+                    params_kwargs["language_detection"] = True
+                else:
+                    params_kwargs["speech_model"] = _v3.SpeechModel.universal_streaming_english
+                logger.info(
+                    "Reconnect StreamingParameters kwargs sent to AssemblyAI: %s",
+                    params_kwargs,
+                )
                 params: Any = _v3.StreamingParameters(**params_kwargs)
 
                 self._mic_stream = _CallbackMicStream(

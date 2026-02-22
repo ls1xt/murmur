@@ -13,6 +13,7 @@ Hold a hotkey, speak, release — your words appear at the cursor.
 - Hot config reload — edit `~/.config/murmur/config.json` live, no daemon restart needed
 - Single config for Linux + macOS — `KEY_LEFTALT` auto-remaps to Cmd on macOS
 - Locale-aware default language — reads `$LANG`/`$LC_ALL` if no language is configured
+- Auto-reconnect on WebSocket drop — exponential backoff, configurable attempts
 - Audio feedback beeps, system tray icon, desktop notifications
 
 ## Installation
@@ -82,7 +83,11 @@ murmur daemon start
 ```
 murmur config                          # view config
 murmur config --key KEY --value VALUE  # set config value
+murmur list-mics                       # list available microphone devices
 murmur record                          # single dictation session
+murmur record --inject-partials        # stream partial transcripts as you speak
+murmur record --inject ydotool         # force ydotool injection backend
+murmur record --notify verbose         # verbose desktop notifications
 murmur daemon start                    # start background daemon
 murmur daemon stop                     # stop daemon
 murmur daemon status                   # check if running
@@ -142,6 +147,15 @@ murmur config --key transcriber.keyterms --value "PyTorch,kubectl"  # custom voc
 murmur config --key feedback.start_duration_ms --value 0            # disable start beep
 murmur config --key feedback.stop_duration_ms --value 200           # longer stop beep
 murmur config --key feedback.amplitude --value 0.1                  # quieter beeps
+murmur config --key feedback.start_hz --value 440                   # start beep pitch (Hz)
+murmur config --key feedback.stop_hz --value 880                    # stop beep pitch (Hz)
+murmur config --key transcriber.mic_device --value 2                # select mic by index
+murmur config --key transcriber.reconnect_attempts --value 10       # WebSocket retry count
+murmur config --key transcriber.reconnect_delay_ms --value 2000     # initial retry delay
+murmur config --key injector.trailing_space --value false           # no trailing space
+murmur config --key injector.key_delay --value 5                    # ms between keystrokes
+murmur config --key tray.enabled --value false                      # disable tray icon
+murmur config --key log_level --value DEBUG                         # verbose logging
 ```
 
 Or set the API key via environment variable:
@@ -150,6 +164,18 @@ Or set the API key via environment variable:
 export ASSEMBLYAI_API_KEY=your_key_here
 murmur record
 ```
+
+### Environment Variables
+
+| Variable | Description |
+|---|---|
+| `ASSEMBLYAI_API_KEY` | AssemblyAI API key (overrides config file) |
+| `MURMUR_LOG_LEVEL` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `MURMUR_MIC_DEVICE` | Microphone device index or name |
+| `MURMUR_NOTIFY_LEVEL` | Desktop notification level (`off`, `errors`, `verbose`) |
+| `MURMUR_INJECT_STRATEGY` | Injection backend (`ydotool`, `clipboard`, `clipboard-fallback`) |
+| `DICTATION_HOTKEY_BACKEND` | Hotkey backend override (`evdev`, `pynput`, `auto`) |
+| `DICTATION_INJECTOR_BACKEND` | Injector backend override |
 
 ### Hotkey Bindings
 
@@ -200,6 +226,112 @@ On macOS, `KEY_LEFTALT` is automatically remapped to `KEY_LEFTMETA` (Cmd) at loa
 
 If no language is set, murmur reads `$LANG`/`$LC_ALL` from your environment as a fallback.
 
+### Example Config
+
+See [`examples/config.json`](examples/config.json) for a complete real-world config (macOS, multi-language, tmux target). Copy it to `~/.config/murmur/config.json` and replace `YOUR_API_KEY`.
+
+On Linux, swap `"inject_strategy": "pynput"` → `"ydotool"` and `KEY_LEFTMETA` → `KEY_LEFTALT` in the modifier lists.
+
+### Hotkey Advanced Settings
+
+```json
+{
+  "hotkey": {
+    "backend": "auto",
+    "evdev_device": "/dev/input/event3",
+    "push_to_talk_debounce_ms": 300
+  }
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `backend` | `"auto"` | `"evdev"` (Linux), `"pynput"` (macOS), `"auto"` |
+| `evdev_device` | `null` | Pin to a specific `/dev/input/eventN` device |
+| `push_to_talk_debounce_ms` | `300` | Ignore key-repeat events shorter than this |
+
+### Transcriber Settings
+
+```json
+{
+  "transcriber": {
+    "language": "en",
+    "keyterms": ["kubectl", "PyTorch"],
+    "inject_partials": false,
+    "reconnect_attempts": 5,
+    "reconnect_delay_ms": 1000,
+    "mic_device": null,
+    "format_turns": true,
+    "end_of_turn_confidence_threshold": 0.4,
+    "min_end_of_turn_silence_when_confident": 400,
+    "max_turn_silence": 1280
+  }
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `language` | `"en"` | Default language (overridden per-binding) |
+| `keyterms` | `[]` | Words to boost in transcription accuracy |
+| `inject_partials` | `false` | Stream partial transcripts as you speak (may produce corrections) |
+| `reconnect_attempts` | `5` | WebSocket reconnect retries on unexpected drop |
+| `reconnect_delay_ms` | `1000` | Initial delay between reconnect attempts (doubles each try) |
+| `mic_device` | `null` | Mic device index or name (`murmur list-mics` to find) |
+| `format_turns` | `true` | Apply punctuation and casing formatting |
+| `end_of_turn_confidence_threshold` | `0.4` | AssemblyAI end-of-turn sensitivity |
+| `min_end_of_turn_silence_when_confident` | `400` | Silence (ms) before committing a turn |
+| `max_turn_silence` | `1280` | Max silence (ms) before forcing a turn end |
+
+### Injector Settings
+
+```json
+{
+  "injector": {
+    "trailing_space": true,
+    "key_delay": 0,
+    "inject_strategy": "clipboard"
+  }
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `trailing_space` | `true` | Append a space after each injected turn |
+| `key_delay` | `0` | Milliseconds between keystrokes (increase for slow apps) |
+| `inject_strategy` | `"clipboard"` | `"ydotool"`, `"clipboard"`, or `"clipboard-fallback"` |
+
+### Feedback Settings
+
+```json
+{
+  "feedback": {
+    "audio_enabled": true,
+    "start_hz": 440.0,
+    "stop_hz": 880.0,
+    "start_duration_ms": 100,
+    "stop_duration_ms": 100,
+    "amplitude": 0.3
+  }
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `audio_enabled` | `true` | Enable start/stop beeps |
+| `start_hz` | `440.0` | Start beep pitch in Hz |
+| `stop_hz` | `880.0` | Stop beep pitch in Hz |
+| `start_duration_ms` | `100` | Start beep duration; set to `0` to disable |
+| `stop_duration_ms` | `100` | Stop beep duration; set to `0` to disable |
+| `amplitude` | `0.3` | Beep volume (0.0–1.0) |
+
+### Selecting a Microphone
+
+```bash
+murmur list-mics               # show all input devices with index
+murmur config --key transcriber.mic_device --value 2   # select by index
+murmur config --key transcriber.mic_device --value "Scarlett Solo"  # or by name
+```
+
 ### Dictating into a tmux pane
 
 Bind a key to `inject_to: "tmux:SESSION:WINDOW.PANE"` to always send transcription to a specific pane — regardless of which window is focused. Combine with `append_enter: true` to auto-submit each utterance.
@@ -235,6 +367,20 @@ systemctl --user start ydotool
 ### Hotkey not detected on macOS
 
 Grant Accessibility permissions: System Settings → Privacy & Security → Accessibility → add your Terminal or Python.
+
+### Characters dropped in terminals or IDEs
+
+Some apps drop characters when injection is too fast. Increase the key delay:
+
+```bash
+murmur config --key injector.key_delay --value 5
+```
+
+Or switch to clipboard injection, which pastes the full text at once:
+
+```bash
+murmur config --key injector.inject_strategy --value clipboard
+```
 
 ## Architecture
 
