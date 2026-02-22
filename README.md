@@ -12,9 +12,9 @@ thousands of sessions before you spend a cent. [Get a free key →](https://www.
 
 ---
 
-## Speak directly to your coding agent
+## 🎙️ Speak directly to your coding agent
 
-Focus Claude Code, Cursor, or any editor and hold F12. Your words land as typed
+Focus Claude Code, Cursor, or any editor and hold <kbd>F12</kbd>. Your words land as typed
 text — no copy-paste, no mode switching. That's the default binding. Nothing to configure.
 
 **Multi-language** — add a second binding for another language. One key for English,
@@ -32,7 +32,7 @@ another for German, or any of 90+ languages:
 }
 ```
 
-## Go further: voice-triggered automation
+## ⚡ Go further: voice-triggered automation
 
 Bind a key to inject into a background tmux pane — regardless of which window
 you're focused in. Add this to `~/.config/murmur/config.json`:
@@ -58,7 +58,7 @@ tmux new-session -d -s todo        # start a detached session named "todo"
 tmux send-keys -t todo "claude" Enter  # launch Claude Code inside it
 ```
 
-Now Ctrl+Cmd+T dictates into that session — Claude Code receives each utterance
+Now <kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>T</kbd> dictates into that session — Claude Code receives each utterance
 as a submitted message and can act on it immediately.
 
 What runs in that pane is up to you. Claude Code in todo-capture mode is one
@@ -72,14 +72,15 @@ We ship a ready-made script for a silent todo-capture setup:
 ./scripts/todo-session.sh
 ```
 
-> **Watch out:** if that pane has a plain shell instead of Claude Code, your
-> dictated words execute as shell commands. The same is true any time Murmur
-> injects into a focused terminal — speech goes wherever the cursor is.
-> This is what makes it powerful. Keep it in mind.
+> [!WARNING]
+> If that pane has a plain shell instead of Claude Code, your dictated words
+> execute as shell commands. The same is true any time Murmur injects into a
+> focused terminal — speech goes wherever the cursor is. This is what makes it
+> powerful. Keep it in mind.
 
 ---
 
-## Privacy & security
+## 🔒 Privacy & security
 
 Murmur needs a few permissions to do its job. Here's exactly what it does and doesn't do:
 
@@ -100,7 +101,7 @@ Be deliberate about what's focused when you speak.
 
 ---
 
-## Platform support
+## 💻 Platform support
 
 Tested on **macOS Sequoia (Apple Silicon)** and **Linux/Wayland** (Sway).
 Other Wayland compositors should work but are untested. X11 and Windows are not supported.
@@ -108,8 +109,9 @@ Contributions and test reports welcome.
 
 ---
 
-## Installation
+## 📦 Installation
 
+> [!NOTE]
 > Packages for Homebrew, AUR, and PyPI are in preparation. Install from source for now:
 
 ```bash
@@ -119,7 +121,7 @@ uv sync
 uv run murmur --help
 ```
 
-## First run
+## 🚀 First run
 
 Set your AssemblyAI API key:
 
@@ -137,13 +139,13 @@ Default hotkeys:
 
 | Key | Mode | Behaviour |
 |-----|------|-----------|
-| **F12** | Push-to-talk | Hold to record, release to inject |
-| **Ctrl+Cmd+M** *(macOS)* / **Ctrl+Alt+M** *(Linux)* | Toggle | Press once to start; press the hotkey again **or type anything** to stop |
-| **Ctrl+Cmd+C** *(macOS)* / **Ctrl+Alt+C** *(Linux)* | Clipboard | Hold to record, release to copy transcript to clipboard |
+| <kbd>F12</kbd> | Push-to-talk | Hold to record, release to inject |
+| <kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>M</kbd> *(macOS)* / <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd> *(Linux)* | Toggle | Press once to start; press the hotkey again **or type anything** to stop |
+| <kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>C</kbd> *(macOS)* / <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> *(Linux)* | Clipboard | Hold to record, release to copy transcript to clipboard |
 
 ---
 
-## Usage
+## 🛠️ Usage
 
 ```
 murmur config                          # view config
@@ -161,7 +163,7 @@ murmur daemon enable                   # install as system service
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
 Config is stored at `~/.config/murmur/config.json`. The daemon hot-reloads it on
 the next keypress — no restart needed.
@@ -218,7 +220,8 @@ Each binding is independent and fully configurable:
 | `append_enter` | `false` | Send Return keystroke after injection |
 | `suppress` | `false` | Swallow the key event (prevents it reaching other apps) |
 
-> **Push-to-talk works best with dedicated keys** (F-keys, mouse buttons). Using
+> [!TIP]
+> Push-to-talk works best with dedicated keys (F-keys, mouse buttons). Using
 > a letter key as a push-to-talk trigger will type that letter while held. Use
 > `toggle` mode instead for modifier+letter combos.
 
@@ -234,7 +237,8 @@ If no language is set, murmur reads `$LANG`/`$LC_ALL` from your environment as a
 **Example config** — see [`examples/config.json`](examples/config.json) for a
 complete real-world setup (macOS, multi-language, tmux target).
 
-### Hotkey advanced settings
+<details>
+<summary>Hotkey advanced settings</summary>
 
 ```json
 {
@@ -254,7 +258,10 @@ complete real-world setup (macOS, multi-language, tmux target).
 | `push_to_talk_debounce_ms` | `300` | Ignore key-repeat events shorter than this |
 | `stop_on_keypress` | `true` | Stop toggle recording when any non-modifier key is pressed |
 
-### Transcriber settings
+</details>
+
+<details>
+<summary>Transcriber settings</summary>
 
 ```json
 {
@@ -286,7 +293,10 @@ complete real-world setup (macOS, multi-language, tmux target).
 | `min_end_of_turn_silence_when_confident` | `400` | Silence (ms) before committing a turn |
 | `max_turn_silence` | `1280` | Max silence (ms) before forcing a turn end |
 
-### Injector settings
+</details>
+
+<details>
+<summary>Injector settings</summary>
 
 ```json
 {
@@ -304,7 +314,10 @@ complete real-world setup (macOS, multi-language, tmux target).
 | `key_delay` | `1` | Milliseconds between keystrokes (increase for slow apps) |
 | `inject_strategy` | `"clipboard"` | `"ydotool"`, `"clipboard"`, or `"clipboard-fallback"` |
 
-### Feedback settings
+</details>
+
+<details>
+<summary>Feedback settings</summary>
 
 ```json
 {
@@ -328,6 +341,8 @@ complete real-world setup (macOS, multi-language, tmux target).
 | `stop_duration_ms` | `100` | Stop beep duration; set to `0` to disable |
 | `amplitude` | `0.3` | Beep volume (0.0–1.0) |
 
+</details>
+
 ### Selecting a microphone
 
 ```bash
@@ -338,7 +353,7 @@ murmur config --key transcriber.mic_device --value "Scarlett Solo"  # or by name
 
 ---
 
-## System dependencies (Linux)
+## 🐧 System dependencies (Linux)
 
 ```bash
 # Ubuntu/Debian
@@ -360,7 +375,7 @@ sudo usermod -aG input $USER
 
 ---
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
 ### "No keyboard devices found"
 
@@ -400,7 +415,7 @@ murmur config --key injector.inject_strategy --value clipboard
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```
 murmur/
@@ -417,7 +432,7 @@ murmur/
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
 Bug reports and pull requests are welcome.
 
@@ -438,6 +453,6 @@ very helpful at this stage.
 
 ---
 
-## License
+## 📄 License
 
 MIT
