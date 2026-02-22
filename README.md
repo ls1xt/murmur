@@ -54,9 +54,10 @@ you're focused in. Add this to `~/.config/murmur/config.json`:
 Start a tmux session and launch Claude Code in it:
 
 ```bash
-tmux new-session -d -s todo        # start a detached session named "todo"
-tmux send-keys -t todo "claude" Enter  # all voice input now wires directly to Claude
+tmux new-session -d -s todo  # start a detached session named "todo"
 ```
+
+Then open that session and run `claude` — all voice input wires directly to it.
 
 Now <kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>T</kbd> dictates into that session — Claude Code receives each utterance
 as a submitted message and can act on it immediately.
