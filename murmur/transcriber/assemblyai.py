@@ -17,7 +17,7 @@ from typing import Any, TypedDict
 
 import sounddevice as _sd
 
-from murmur.config import TranscriberConfig
+from murmur.config import _KEYTERMS_MAX, _KEYTERMS_MAX_LEN, TranscriberConfig
 from murmur.errors import fatal_from_thread
 from murmur.transcriber.base import Transcriber
 
@@ -145,6 +145,42 @@ class _StreamingParams(TypedDict, total=False):
 
 
 _EventHandler = Callable[[Any, Any], None]
+
+
+def _sanitize_keyterms(raw: list[str]) -> list[str]:
+    """Enforce AssemblyAI keyterms constraints.
+
+    Limits: max 100 terms, each ≤50 chars.  Deduplicates preserving order.
+    Logs a warning for every dropped term so the user knows to trim their list.
+    """
+    seen: set[str] = set()
+    result: list[str] = []
+    for term in raw:
+        if term in seen:
+            logger.warning("Keyterm duplicate dropped: %r", term)
+            continue
+        seen.add(term)
+        if len(term) > _KEYTERMS_MAX_LEN:
+            logger.warning(
+                "Keyterm too long (%d chars, max %d), dropped: %r",
+                len(term),
+                _KEYTERMS_MAX_LEN,
+                term,
+            )
+            continue
+        result.append(term)
+
+    if len(result) > _KEYTERMS_MAX:
+        dropped = result[_KEYTERMS_MAX:]
+        logger.warning(
+            "Too many keyterms (%d); truncating to %d. Dropped: %s",
+            len(result),
+            _KEYTERMS_MAX,
+            dropped,
+        )
+        result = result[:_KEYTERMS_MAX]
+
+    return result
 
 
 class AssemblyAITranscriber(Transcriber):
@@ -318,7 +354,9 @@ class AssemblyAITranscriber(Transcriber):
             "encoding": _v3.Encoding.pcm_s16le,
         }
         if self._config.keyterms_prompt:
-            params_kwargs["keyterms_prompt"] = self._config.keyterms_prompt
+            params_kwargs["keyterms_prompt"] = _sanitize_keyterms(
+                self._config.keyterms_prompt
+            )
         effective_language = language or self._config.language
         self._current_language = effective_language
         # v3 API has no language_code input — use speech_model to select
@@ -540,7 +578,9 @@ class AssemblyAITranscriber(Transcriber):
                     "encoding": _v3.Encoding.pcm_s16le,
                 }
                 if self._config.keyterms_prompt:
-                    params_kwargs["keyterms_prompt"] = self._config.keyterms_prompt
+                    params_kwargs["keyterms_prompt"] = _sanitize_keyterms(
+                        self._config.keyterms_prompt
+                    )
                 if self._current_language and not self._current_language.startswith(
                     "en"
                 ):
@@ -612,6 +652,12 @@ class AssemblyAITranscriber(Transcriber):
             message = (
                 "AssemblyAI auth error (code 1008): "
                 "check your API key and account balance"
+            )
+        elif error_code == 1011 or "1011" in error_str:
+            message = (
+                "AssemblyAI rejected the session (code 1011 — server internal error). "
+                "Common cause: too many keyterms (max 100, each ≤50 chars) or "
+                "an unsupported parameter combination."
             )
         elif "3005" in error_str:
             message = "AssemblyAI session expired (code 3005)"

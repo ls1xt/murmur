@@ -93,6 +93,10 @@ class HotkeyConfig:
     stop_on_keypress: bool = True
 
 
+_KEYTERMS_MAX = 100
+_KEYTERMS_MAX_LEN = 50
+
+
 @dataclass
 class TranscriberConfig:
     """Speech-to-text engine settings."""
@@ -111,6 +115,47 @@ class TranscriberConfig:
     reconnect_attempts: int = 5
     reconnect_delay_ms: int = 1000
     mic_device: str | None = None
+
+    def validate(self) -> None:
+        """Warn about keyterms that violate AssemblyAI's API limits.
+
+        AssemblyAI enforces: max 100 keyterms, each ≤50 characters.
+        Violations are logged at WARNING level so they surface at startup
+        rather than at connection time (where they cause a cryptic 1011 error).
+        """
+        terms = self.keyterms_prompt
+        if not terms:
+            return
+        seen: set[str] = set()
+        dupes: list[str] = []
+        too_long: list[str] = []
+        for t in terms:
+            if t in seen:
+                dupes.append(t)
+            else:
+                seen.add(t)
+            if len(t) > _KEYTERMS_MAX_LEN:
+                too_long.append(t)
+        unique_count = len(seen)
+        if dupes:
+            logger.warning(
+                "Config: duplicate keyterms will be dropped at connect time: %s", dupes
+            )
+        if too_long:
+            logger.warning(
+                "Config: keyterms exceed %d-char limit and will be dropped: %s",
+                _KEYTERMS_MAX_LEN,
+                too_long,
+            )
+        if unique_count > _KEYTERMS_MAX:
+            logger.warning(
+                "Config: %d keyterms exceeds AssemblyAI limit of %d; "
+                "the last %d will be dropped at connect time. "
+                "Trim your keyterms_prompt list.",
+                unique_count,
+                _KEYTERMS_MAX,
+                unique_count - _KEYTERMS_MAX,
+            )
 
 
 @dataclass
@@ -229,6 +274,8 @@ class DictationConfig:
 
         if mic_device := os.environ.get("MURMUR_MIC_DEVICE"):
             config.transcriber.mic_device = mic_device
+
+        config.transcriber.validate()
 
         # On macOS, normalize KEY_LEFTALT/KEY_RIGHTALT → KEY_LEFTMETA/KEY_RIGHTMETA
         # in all binding modifier lists.  This lets users write Linux-style configs
