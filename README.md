@@ -138,7 +138,7 @@ Default hotkeys:
 | Key | Mode | Behaviour |
 |-----|------|-----------|
 | **F12** | Push-to-talk | Hold to record, release to inject |
-| **Ctrl+Cmd+M** *(macOS)* / **Ctrl+Alt+M** *(Linux)* | Toggle | Press once to start, press again to stop |
+| **Ctrl+Cmd+M** *(macOS)* / **Ctrl+Alt+M** *(Linux)* | Toggle | Press once to start; press again **or type anything** to stop |
 | **Ctrl+Cmd+C** *(macOS)* / **Ctrl+Alt+C** *(Linux)* | Clipboard | Hold to record, release copies to clipboard |
 
 ---
@@ -241,7 +241,8 @@ complete real-world setup (macOS, multi-language, tmux target).
   "hotkey": {
     "backend": "auto",
     "evdev_device": "/dev/input/event3",
-    "push_to_talk_debounce_ms": 300
+    "push_to_talk_debounce_ms": 300,
+    "stop_on_keypress": true
   }
 }
 ```
@@ -251,6 +252,7 @@ complete real-world setup (macOS, multi-language, tmux target).
 | `backend` | `"auto"` | `"evdev"` (Linux), `"pynput"` (macOS), `"auto"` |
 | `evdev_device` | `null` | Pin to a specific `/dev/input/eventN` device |
 | `push_to_talk_debounce_ms` | `300` | Ignore key-repeat events shorter than this |
+| `stop_on_keypress` | `true` | Stop toggle recording when any non-modifier key is pressed |
 
 ### Transcriber settings
 

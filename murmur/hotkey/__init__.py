@@ -18,6 +18,7 @@ def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
                 bindings=config.bindings,
                 device_path=config.evdev_device,
                 push_to_talk_debounce_ms=config.push_to_talk_debounce_ms,
+                stop_on_keypress=config.stop_on_keypress,
             )
         case "pynput":
             from murmur.hotkey.pynput import PynputHotkeyListener
@@ -25,6 +26,7 @@ def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
             return PynputHotkeyListener(
                 bindings=config.bindings,
                 push_to_talk_debounce_ms=config.push_to_talk_debounce_ms,
+                stop_on_keypress=config.stop_on_keypress,
             )
         case "auto":
             if sys.platform == "linux":
@@ -34,6 +36,7 @@ def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
                     bindings=config.bindings,
                     device_path=config.evdev_device,
                     push_to_talk_debounce_ms=config.push_to_talk_debounce_ms,
+                    stop_on_keypress=config.stop_on_keypress,
                 )
             elif sys.platform == "darwin":
                 from murmur.hotkey.pynput import PynputHotkeyListener
@@ -41,6 +44,7 @@ def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
                 return PynputHotkeyListener(
                     bindings=config.bindings,
                     push_to_talk_debounce_ms=config.push_to_talk_debounce_ms,
+                    stop_on_keypress=config.stop_on_keypress,
                 )
             raise RuntimeError(f"No hotkey backend available for {sys.platform}")
         case _:

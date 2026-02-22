@@ -90,6 +90,7 @@ class HotkeyConfig:
     backend: Literal["auto", "evdev", "pynput"] = "auto"
     evdev_device: str | None = None
     push_to_talk_debounce_ms: int = 300
+    stop_on_keypress: bool = True
 
 
 @dataclass
@@ -329,6 +330,8 @@ class DictationConfig:
                 config.hotkey.push_to_talk_debounce_ms = int(
                     raw_hotkey["push_to_talk_debounce_ms"]
                 )
+            if "stop_on_keypress" in raw_hotkey:
+                config.hotkey.stop_on_keypress = bool(raw_hotkey["stop_on_keypress"])
         _apply_section(data, "transcriber", config.transcriber)
         _apply_section(data, "injector", config.injector)
         _apply_section(data, "feedback", config.feedback)

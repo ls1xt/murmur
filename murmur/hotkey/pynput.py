@@ -28,6 +28,25 @@ from murmur.hotkey.base import HotkeyListener
 
 logger = logging.getLogger(__name__)
 
+# Canonical modifier keys (after listener.canonical()).  Left/right variants
+# collapse to these, so checking this set is sufficient.
+_MODIFIER_KEYS: frozenset[Key] = frozenset(
+    {
+        Key.ctrl,
+        Key.alt,
+        Key.shift,
+        Key.cmd,
+        Key.ctrl_l,
+        Key.ctrl_r,
+        Key.alt_l,
+        Key.alt_r,
+        Key.shift_l,
+        Key.shift_r,
+        Key.cmd_l,
+        Key.cmd_r,
+    }
+)
+
 
 # ---------------------------------------------------------------------------
 # Evdev-to-pynput canonical key translation table
@@ -265,8 +284,10 @@ class PynputHotkeyListener(HotkeyListener):
         self,
         bindings: list[HotkeyBinding],
         push_to_talk_debounce_ms: int = 300,
+        stop_on_keypress: bool = True,
     ) -> None:
         super().__init__()
+        self._stop_on_keypress = stop_on_keypress
         self._bindings: list[_ResolvedBinding] = _resolve_bindings(bindings)
         self._held: set[Key | KeyCode] = set()
         # VK codes of currently-held keys — used as a layout-independent
@@ -420,6 +441,7 @@ class PynputHotkeyListener(HotkeyListener):
             "KEY PRESS  raw=%r  canonical=%r  held=%r", key, canonical, self._held
         )
 
+        any_binding_matched = False
         for binding in self._bindings:
             # Match by character (normal) OR by hardware VK (handles
             # Option-transformed chars like Alt+M → 'µ' on macOS).
@@ -429,6 +451,7 @@ class PynputHotkeyListener(HotkeyListener):
                 and binding.trigger_vk == raw_vk
             )
             if trigger_match and binding.modifiers.issubset(self._held):
+                any_binding_matched = True
                 if binding.action in ("push_to_talk", "copy_to_clipboard", "toggle"):  # noqa: SIM102
                     # Ignore key-repeat from the SAME binding while a session
                     # is in flight.  F12 (no modifiers) generates key-repeat
@@ -465,6 +488,18 @@ class PynputHotkeyListener(HotkeyListener):
                     self._ptt_press_dispatched = True
                     self._ptt_dispatched_binding_id = id(binding.binding)
                 self.dispatch_action(binding.binding)
+
+        # stop_on_keypress: any real, non-modifier, non-hotkey keypress stops
+        # an active toggle recording.  Injected events are already filtered
+        # above (injected=True guard), so only genuine user input reaches here.
+        if (
+            not any_binding_matched
+            and self._stop_on_keypress
+            and canonical not in _MODIFIER_KEYS
+            and self.on_deactivate is not None
+        ):
+            logger.debug("stop_on_keypress: stopping recording (key=%r)", canonical)
+            self.on_deactivate()
 
     def _on_release(self, key: Key | KeyCode | None, injected: bool = False) -> None:
         """Handle a key-release event.

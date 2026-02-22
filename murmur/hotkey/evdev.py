@@ -38,6 +38,25 @@ _key_names: dict[int, str] = ecodes.KEY  # type: ignore[reportUnknownMemberType]
 # These get debounced release to filter spurious key-up events.
 _DEBOUNCED_ACTIONS: frozenset[str] = frozenset({"push_to_talk", "copy_to_clipboard"})
 
+# Evdev codes for pure modifier keys.  Pressing only these should not stop
+# a toggle recording session (the user may be composing a chord).
+_MODIFIER_CODES: frozenset[int] = frozenset(
+    filter(
+        None,
+        [
+            _ecodes_dict.get("KEY_LEFTCTRL"),
+            _ecodes_dict.get("KEY_RIGHTCTRL"),
+            _ecodes_dict.get("KEY_LEFTSHIFT"),
+            _ecodes_dict.get("KEY_RIGHTSHIFT"),
+            _ecodes_dict.get("KEY_LEFTALT"),
+            _ecodes_dict.get("KEY_RIGHTALT"),
+            _ecodes_dict.get("KEY_LEFTMETA"),
+            _ecodes_dict.get("KEY_RIGHTMETA"),
+            _ecodes_dict.get("KEY_CAPSLOCK"),
+        ],
+    )
+)
+
 
 def _open_device(path: str) -> Any:
     """Open an evdev InputDevice (typed wrapper for untyped library)."""
@@ -128,8 +147,10 @@ class EvdevHotkeyListener(HotkeyListener):
         bindings: list[HotkeyBinding],
         device_path: str | None = None,
         push_to_talk_debounce_ms: int = 300,
+        stop_on_keypress: bool = True,
     ) -> None:
         super().__init__()
+        self._stop_on_keypress = stop_on_keypress
         self._bindings: list[_ResolvedBinding] = []
         self._all_modifier_codes: set[int] = set()
 
@@ -388,6 +409,17 @@ class EvdevHotkeyListener(HotkeyListener):
                 if uinput is not None:
                     uinput.write_event(event)  # type: ignore[reportUnknownMemberType]
                     uinput.syn()  # type: ignore[reportUnknownMemberType]
+                # stop_on_keypress: any real non-modifier, non-hotkey keypress
+                # stops an active toggle recording.  On Linux, injected events
+                # (e.g. from ydotool) come from virtual devices which are
+                # excluded by find_keyboard_devices(), so they never reach here.
+                if (
+                    self._stop_on_keypress
+                    and code not in _MODIFIER_CODES
+                    and self.on_deactivate is not None
+                ):
+                    logger.debug("stop_on_keypress: stopping recording (code=%d)", code)
+                    self.on_deactivate()
 
         elif keystate == 0:  # Key up
             self._held_keys.discard(code)
