@@ -15,6 +15,7 @@ import contextlib
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypedDict
 
@@ -195,6 +196,19 @@ class EvdevHotkeyListener(HotkeyListener):
         # and copy_to_clipboard are hold-to-record and stop on key release.
         self._active_action: str | None = None
 
+    def set_callbacks(
+        self,
+        on_activate: Callable[[HotkeyBinding], None],
+        on_deactivate: Callable[[], None],
+    ) -> None:
+        """Wrap on_deactivate to clear _active_action whenever recording stops."""
+
+        def _wrapped_deactivate() -> None:
+            self._active_action = None
+            on_deactivate()
+
+        super().set_callbacks(on_activate, _wrapped_deactivate)
+
     @property
     def held_keys(self) -> set[int]:
         """Keys currently held down."""
@@ -340,7 +354,6 @@ class EvdevHotkeyListener(HotkeyListener):
             uinput = rel["uinput"]
             del self._pending_releases[code]
             self._suppressed_triggers.discard(code)
-            self._active_action = None
             self.dispatch_release(binding.binding)
             logger.debug(
                 "Debounce fired: dispatched release for code=%d action=%s",
@@ -429,7 +442,6 @@ class EvdevHotkeyListener(HotkeyListener):
                     and self.on_deactivate is not None
                 ):
                     logger.debug("stop_on_keypress: stopping recording (code=%d)", code)
-                    self._active_action = None
                     self.on_deactivate()
 
         elif keystate == 0:  # Key up
@@ -460,8 +472,10 @@ class EvdevHotkeyListener(HotkeyListener):
                         )
                     else:
                         # Toggle actions: release immediately, no debounce needed.
+                        # Do NOT clear _active_action here — recording is still
+                        # running until on_deactivate fires (via stop_on_keypress
+                        # or re-press).
                         self._suppressed_triggers.discard(code)
-                        self._active_action = None
                         self.dispatch_release(released_binding.binding)
 
                         # Restore modifiers: re-press those physically held

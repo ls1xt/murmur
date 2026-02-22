@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -320,6 +321,19 @@ class PynputHotkeyListener(HotkeyListener):
         # copy_to_clipboard are hold-to-record and stop on key release.
         self._active_action: str | None = None
 
+    def set_callbacks(
+        self,
+        on_activate: Callable[[HotkeyBinding], None],
+        on_deactivate: Callable[[], None],
+    ) -> None:
+        """Wrap on_deactivate to clear _active_action whenever recording stops."""
+
+        def _wrapped_deactivate() -> None:
+            self._active_action = None
+            on_deactivate()
+
+        super().set_callbacks(on_activate, _wrapped_deactivate)
+
     def start(self) -> None:
         """Start listening for hotkeys in a background thread.
 
@@ -511,7 +525,6 @@ class PynputHotkeyListener(HotkeyListener):
             and self.on_deactivate is not None
         ):
             logger.debug("stop_on_keypress: stopping recording (key=%r)", canonical)
-            self._active_action = None
             self.on_deactivate()
 
     def _on_release(self, key: Key | KeyCode | None, injected: bool = False) -> None:
@@ -563,7 +576,6 @@ class PynputHotkeyListener(HotkeyListener):
                         )
                         continue
                     self._ptt_press_dispatched = False
-                    self._active_action = None
                     self.dispatch_release(binding.binding)
                     # Set debounce timestamp AFTER dispatch returns.
                     # _dispatch_release calls _on_deactivate which calls
@@ -575,10 +587,11 @@ class PynputHotkeyListener(HotkeyListener):
                 elif binding.action == "toggle":
                     # Toggle: clear the key-repeat guard on release.
                     # The actual start/stop logic is handled in the app layer;
-                    # no _dispatch_release needed here.
+                    # no _dispatch_release needed here.  Do NOT clear
+                    # _active_action here — recording is still running until
+                    # on_deactivate fires (via stop_on_keypress or re-press).
                     self._ptt_press_dispatched = False
                     self._ptt_dispatched_binding_id = None
-                    self._active_action = None
                 else:
                     self.dispatch_release(binding.binding)
 
