@@ -162,12 +162,35 @@ class AssemblyAITranscriber(Transcriber):
         self._stop_done.set()
 
     def test_connection(self) -> None:
-        """Open a brief WebSocket connection to verify the API key and warm TLS.
+        """Warm PortAudio and the AssemblyAI WebSocket at startup.
 
-        Connects to AssemblyAI, waits for the Begin event (confirming auth),
-        then immediately disconnects. Costs ~$0.000042. Called at startup in a
-        background thread so the first real recording session connects fast.
+        1. Opens and immediately closes a mic stream so PortAudio initialises
+           the audio device while the user is not yet recording.  Without this
+           the first RawInputStream can take ~4 s on a cold PortAudio stack,
+           causing the first recording session to drop several seconds of audio.
+
+        2. Opens a brief WebSocket to AssemblyAI, waits for the Begin event
+           (confirming auth), then disconnects.  Costs ~$0.000042 but ensures
+           the TLS session is cached so subsequent connects are <1 s.
+
+        Called in a background thread from DictationApp.run().
         """
+        # Step 1: warm PortAudio
+        logger.info("AssemblyAI: warming PortAudio...")
+        try:
+            import time as _time
+
+            mic = _CallbackMicStream(
+                sample_rate=self._config.sample_rate,
+                device=self._config.mic_device,
+            )
+            _time.sleep(0.2)
+            mic.close()
+            logger.info("AssemblyAI: PortAudio warmed")
+        except Exception as e:
+            logger.warning("PortAudio pre-warm failed: %s", e)
+
+        # Step 2: warm WebSocket / TLS
         logger.info("AssemblyAI: testing connection...")
         connected = threading.Event()
 
