@@ -55,7 +55,7 @@ Start a tmux session and launch Claude Code in it:
 
 ```bash
 tmux new-session -d -s todo        # start a detached session named "todo"
-tmux send-keys -t todo "claude" Enter  # launch Claude Code inside it
+tmux send-keys -t todo "claude" Enter  # all voice input now wires directly to Claude
 ```
 
 Now <kbd>Ctrl</kbd>+<kbd>Cmd</kbd>+<kbd>T</kbd> dictates into that session — Claude Code receives each utterance
