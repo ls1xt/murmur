@@ -97,7 +97,7 @@ def mock_hotkey_config() -> HotkeyConfig:
             HotkeyBinding(
                 modifiers=["KEY_LEFTCTRL", "KEY_LEFTSHIFT"],
                 trigger="KEY_SPACE",
-                action="push_to_talk",
+                mode="push_to_talk",
             ),
         ],
         backend="evdev",

@@ -28,13 +28,13 @@ class TestHotkeyListenerBase:
         return StubListener()
 
     def _binding(
-        self, action: Literal["push_to_talk", "toggle", "copy_to_clipboard"]
+        self, mode: Literal["push_to_talk", "toggle"]
     ) -> HotkeyBinding:
-        """Create a HotkeyBinding with the given action for dispatch tests."""
+        """Create a HotkeyBinding with the given mode for dispatch tests."""
         return HotkeyBinding(
             modifiers=["KEY_LEFTCTRL"],
             trigger="KEY_SPACE",
-            action=action,
+            mode=mode,
         )
 
     def test_push_to_talk_activate_on_dispatch(self) -> None:
@@ -120,7 +120,7 @@ class TestEvdevHotkeyListener:
             HotkeyBinding(
                 modifiers=["KEY_LEFTCTRL", "KEY_LEFTSHIFT"],
                 trigger="KEY_SPACE",
-                action="push_to_talk",
+                mode="push_to_talk",
             ),
         ]
 
@@ -155,7 +155,7 @@ class TestEvdevHotkeyListener:
         on_activate.assert_called_once()
         called_binding = on_activate.call_args[0][0]
         assert isinstance(called_binding, HotkeyBinding)
-        assert called_binding.action == "push_to_talk"
+        assert called_binding.mode == "push_to_talk"
 
     def test_push_to_talk_deactivates_on_release(self, mocker: Any) -> None:
         from murmur.hotkey.evdev import EvdevHotkeyListener
@@ -267,7 +267,7 @@ class TestEvdevHotkeyListener:
                     HotkeyBinding(
                         modifiers=["KEY_NONEXISTENT"],
                         trigger="KEY_SPACE",
-                        action="push_to_talk",
+                        mode="push_to_talk",
                     )
                 ],
             )
@@ -281,7 +281,7 @@ class TestEvdevHotkeyListener:
                     HotkeyBinding(
                         modifiers=["KEY_LEFTCTRL"],
                         trigger="KEY_BOGUS",
-                        action="push_to_talk",
+                        mode="push_to_talk",
                     )
                 ],
             )
@@ -358,12 +358,12 @@ class TestEvdevHotkeyListener:
             HotkeyBinding(
                 modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
                 trigger="KEY_SPACE",
-                action="push_to_talk",
+                mode="push_to_talk",
             ),
             HotkeyBinding(
                 modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
                 trigger="KEY_K",
-                action="toggle",
+                mode="toggle",
             ),
         ]
 
@@ -391,7 +391,7 @@ class TestEvdevHotkeyListener:
         on_activate.assert_called_once()
         called_binding = on_activate.call_args[0][0]
         assert isinstance(called_binding, HotkeyBinding)
-        assert called_binding.action == "toggle"
+        assert called_binding.mode == "toggle"
 
     @pytest.mark.hardware()
     def test_real_keyboard_detection(self) -> None:

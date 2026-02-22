@@ -35,9 +35,22 @@ KEY_Z: int = ecodes.KEY_Z  # type: ignore[reportUnknownMemberType]
 _ecodes_dict: dict[str, int] = ecodes.ecodes  # type: ignore[reportUnknownMemberType]
 _key_names: dict[int, str] = ecodes.KEY  # type: ignore[reportUnknownMemberType]
 
-# Actions that use hold-to-activate (press to start, release to stop).
+# Modes that use hold-to-activate (press to start, release to stop).
 # These get debounced release to filter spurious key-up events.
-_DEBOUNCED_ACTIONS: frozenset[str] = frozenset({"push_to_talk", "copy_to_clipboard"})
+_DEBOUNCED_MODES: frozenset[str] = frozenset({"push_to_talk"})
+
+# Evdev codes for keys that should not stop a toggle recording session even
+# when stop_on_keypress is enabled.  Enter is excluded so users can press Enter
+# mid-dictation without stopping the session.
+_STOP_EXCLUDED_CODES: frozenset[int] = frozenset(
+    filter(
+        None,
+        [
+            _ecodes_dict.get("KEY_ENTER"),
+            _ecodes_dict.get("KEY_KPENTER"),
+        ],
+    )
+)
 
 # Evdev codes for pure modifier keys.  Pressing only these should not stop
 # a toggle recording session (the user may be composing a chord).
@@ -115,7 +128,7 @@ class _ResolvedBinding:
 
     modifier_codes: set[int]
     trigger_code: int
-    action: str
+    mode: str
     binding: HotkeyBinding = field(default_factory=HotkeyBinding)
 
 
@@ -171,7 +184,7 @@ class EvdevHotkeyListener(HotkeyListener):
                 _ResolvedBinding(
                     modifier_codes=mod_codes,
                     trigger_code=trigger_code,
-                    action=binding.action,
+                    mode=binding.mode,
                     binding=binding,
                 )
             )
@@ -291,10 +304,11 @@ class EvdevHotkeyListener(HotkeyListener):
                 binding.trigger_code, str(binding.trigger_code)
             )
             logger.info(
-                "Binding: %s+%s -> %s",
+                "Binding: %s+%s -> mode=%s destination=%s",
                 "+".join(mod_names),
                 trigger_name,
-                binding.action,
+                binding.mode,
+                binding.binding.destination,
             )
 
     def _listen_loop(self) -> None:
@@ -356,9 +370,9 @@ class EvdevHotkeyListener(HotkeyListener):
             self._suppressed_triggers.discard(code)
             self.dispatch_release(binding.binding)
             logger.debug(
-                "Debounce fired: dispatched release for code=%d action=%s",
+                "Debounce fired: dispatched release for code=%d mode=%s",
                 code,
-                binding.action,
+                binding.mode,
             )
             # Restore modifier state: re-press still-held modifiers, explicitly
             # release any that were released during the debounce window
@@ -421,7 +435,7 @@ class EvdevHotkeyListener(HotkeyListener):
                             )
                     uinput.syn()  # type: ignore[reportUnknownMemberType]
 
-                self._active_action = matched_binding.action
+                self._active_action = matched_binding.mode
                 self.dispatch_action(matched_binding.binding)
             else:
                 # Not a hotkey -- forward the event
@@ -429,9 +443,10 @@ class EvdevHotkeyListener(HotkeyListener):
                     uinput.write_event(event)  # type: ignore[reportUnknownMemberType]
                     uinput.syn()  # type: ignore[reportUnknownMemberType]
                 # stop_on_keypress: any real non-modifier, non-hotkey keypress
-                # stops an active *toggle* recording.  push_to_talk and
-                # copy_to_clipboard are hold-to-record and stop on key release,
-                # so they must not be interrupted by unrelated keypresses.
+                # stops an active *toggle* recording.  push_to_talk is
+                # hold-to-record and stops on key release, so it must not be
+                # interrupted by unrelated keypresses.  Enter is excluded so
+                # users can press Enter mid-dictation without stopping.
                 # On Linux, injected events (e.g. from ydotool) come from
                 # virtual devices excluded by find_keyboard_devices(), so they
                 # never reach here.
@@ -439,6 +454,7 @@ class EvdevHotkeyListener(HotkeyListener):
                     self._stop_on_keypress
                     and self._active_action == "toggle"
                     and code not in _MODIFIER_CODES
+                    and code not in _STOP_EXCLUDED_CODES
                     and self.on_deactivate is not None
                 ):
                     logger.debug("stop_on_keypress: stopping recording (code=%d)", code)
@@ -456,7 +472,7 @@ class EvdevHotkeyListener(HotkeyListener):
                         break
 
                 if released_binding is not None:
-                    if released_binding.action in _DEBOUNCED_ACTIONS:
+                    if released_binding.mode in _DEBOUNCED_MODES:
                         # Schedule a debounced release instead of firing immediately.
                         # Trigger stays in _suppressed_triggers until debounce fires.
                         self._pending_releases[code] = {
@@ -465,9 +481,9 @@ class EvdevHotkeyListener(HotkeyListener):
                             "uinput": uinput,
                         }
                         logger.debug(
-                            "Debouncing release: code=%d action=%s (%.0f ms window)",
+                            "Debouncing release: code=%d mode=%s (%.0f ms window)",
                             code,
-                            released_binding.action,
+                            released_binding.mode,
                             self._push_to_talk_debounce_sec * 1000,
                         )
                     else:

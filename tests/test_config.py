@@ -27,25 +27,25 @@ class TestDefaultValues:
         config = HotkeyConfig()
         assert config.backend == "auto"
         assert config.evdev_device is None
-        assert len(config.bindings) == 3
-        actions = [b.action for b in config.bindings]
-        assert actions == [
-            "push_to_talk",
-            "toggle",
-            "copy_to_clipboard",
-        ]
+        assert len(config.bindings) == 4
+        modes = [b.mode for b in config.bindings]
+        destinations = [b.destination for b in config.bindings]
+        assert modes == ["push_to_talk", "toggle", "push_to_talk", "toggle"]
+        assert destinations == ["direct_inject", "direct_inject", "clipboard", "clipboard"]
 
     def test_hotkey_binding_defaults(self) -> None:
         binding = HotkeyBinding()
         assert binding.modifiers == ["KEY_LEFTCTRL", "KEY_LEFTALT"]
         assert binding.trigger == "KEY_SPACE"
-        assert binding.action == "push_to_talk"
+        assert binding.mode == "push_to_talk"
+        assert binding.destination == "direct_inject"
 
     def test_hotkey_default_bindings_keys(self) -> None:
         config = HotkeyConfig()
         assert config.bindings[0].trigger == "KEY_F12"
         assert config.bindings[1].trigger == "KEY_M"
         assert config.bindings[2].trigger == "KEY_C"
+        assert config.bindings[3].trigger == "KEY_V"
 
     def test_transcriber_defaults(self) -> None:
         config = TranscriberConfig()
@@ -118,21 +118,6 @@ class TestEnvVarOverride:
 class TestFromDict:
     """Test config construction from a dictionary."""
 
-    def testfrom_dict_backward_compat_old_format(self) -> None:
-        """Old hotkey format (modifiers/trigger/mode) migrates to bindings."""
-        data: dict[str, Any] = {
-            "hotkey": {
-                "modifiers": ["KEY_LEFTCTRL"],
-                "trigger": "KEY_A",
-                "mode": "push_to_talk",
-            }
-        }
-        config = DictationConfig.from_dict(data)
-        assert len(config.hotkey.bindings) == 1
-        assert config.hotkey.bindings[0].trigger == "KEY_A"
-        assert config.hotkey.bindings[0].modifiers == ["KEY_LEFTCTRL"]
-        assert config.hotkey.bindings[0].action == "push_to_talk"
-
     def testfrom_dict_new_bindings_format(self) -> None:
         """New bindings format deserializes correctly."""
         data: dict[str, Any] = {
@@ -141,7 +126,8 @@ class TestFromDict:
                     {
                         "modifiers": ["KEY_LEFTCTRL"],
                         "trigger": "KEY_X",
-                        "action": "toggle_start",
+                        "mode": "toggle",
+                        "destination": "clipboard",
                     }
                 ]
             }
@@ -149,7 +135,8 @@ class TestFromDict:
         config = DictationConfig.from_dict(data)
         assert len(config.hotkey.bindings) == 1
         assert config.hotkey.bindings[0].trigger == "KEY_X"
-        assert config.hotkey.bindings[0].action == "toggle_start"
+        assert config.hotkey.bindings[0].mode == "toggle"
+        assert config.hotkey.bindings[0].destination == "clipboard"
 
     def testfrom_dict_applies_transcriber_settings(self) -> None:
         data: dict[str, Any] = {

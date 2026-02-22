@@ -214,7 +214,8 @@ Each binding is independent and fully configurable:
 |---|---|---|
 | `modifiers` | `[]` | Modifier keys (e.g. `["KEY_LEFTCTRL", "KEY_LEFTMETA"]`) |
 | `trigger` | — | Trigger key (e.g. `"KEY_F12"`) |
-| `action` | `"push_to_talk"` | `push_to_talk`, `toggle`, `copy_to_clipboard` |
+| `mode` | `"push_to_talk"` | `push_to_talk` (hold to record), `toggle` (press to start/stop) |
+| `destination` | `"direct_inject"` | `direct_inject` (type into active app), `clipboard` (copy to clipboard) |
 | `language` | `null` | Language override for this binding (e.g. `"de"`, `"en_au"`) |
 | `inject_to` | `"default"` | `"default"` (focused window) or `"tmux:SESSION:WINDOW.PANE"` |
 | `append_enter` | `false` | Send Return keystroke after injection |

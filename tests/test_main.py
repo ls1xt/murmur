@@ -187,7 +187,7 @@ class TestDictationAppLifecycle:
     def test_activate_starts_transcription(self, mocker: Any) -> None:
         app, transcriber, _, _ = _make_app(mocker)
 
-        app.on_activate(HotkeyBinding(action="push_to_talk"))
+        app.on_activate(HotkeyBinding(mode="push_to_talk"))
 
         time.sleep(0.05)
         transcriber.start.assert_called_once()
@@ -207,7 +207,7 @@ class TestDictationAppLifecycle:
 
         # Simulate recording already active
         app.recording_active = True
-        app.on_activate(HotkeyBinding(action="push_to_talk"))
+        app.on_activate(HotkeyBinding(mode="push_to_talk"))
 
         time.sleep(0.05)
         transcriber.start.assert_not_called()
@@ -283,7 +283,7 @@ class TestDictationAppLifecycle:
 
         for _ in range(3):
             app.recording_active = False
-            app.on_activate(HotkeyBinding(action="push_to_talk"))
+            app.on_activate(HotkeyBinding(mode="push_to_talk"))
             time.sleep(0.05)
 
             app.recording_active = True
@@ -319,7 +319,7 @@ class TestClipboardMode:
     def test_activate_clipboard_sets_flag(self, mocker: Any) -> None:
         app, _, _, _ = _make_app(mocker)
 
-        app.on_activate(HotkeyBinding(action="copy_to_clipboard"))
+        app.on_activate(HotkeyBinding(mode="push_to_talk", destination="clipboard"))
         assert app.clipboard_mode is True
 
     def test_activate_push_to_talk_clears_flag(self, mocker: Any) -> None:
@@ -327,7 +327,7 @@ class TestClipboardMode:
 
         app.clipboard_mode = True
         app.recording_active = False
-        app.on_activate(HotkeyBinding(action="push_to_talk"))
+        app.on_activate(HotkeyBinding(mode="push_to_talk"))
         assert app.clipboard_mode is False
 
     def test_partial_skipped_in_clipboard_mode(self, mocker: Any) -> None:
@@ -377,7 +377,7 @@ class TestAppendEnter:
         """When binding.append_enter=True, inject_return is called after transcription."""
         app, transcriber, injector, _ = _make_app(mocker)
 
-        binding = HotkeyBinding(action="push_to_talk", append_enter=True)
+        binding = HotkeyBinding(mode="push_to_talk", append_enter=True)
         app.on_activate(binding)
         time.sleep(0.05)
 
@@ -396,7 +396,7 @@ class TestAppendEnter:
         """When binding.append_enter=False, inject_return is not called."""
         app, transcriber, injector, _ = _make_app(mocker)
 
-        binding = HotkeyBinding(action="push_to_talk", append_enter=False)
+        binding = HotkeyBinding(mode="push_to_talk", append_enter=False)
         app.active_binding = binding
         app.active_injector = injector
         app.clipboard_mode = False

@@ -42,17 +42,11 @@ class HotkeyListener(ABC):
 
     def dispatch_action(self, binding: HotkeyBinding) -> None:
         """Dispatch a hotkey press for the given binding."""
-        if (
-            binding.action in ("push_to_talk", "toggle", "copy_to_clipboard")
-            and self.on_activate
-        ):
+        if self.on_activate:
             self.on_activate(binding)
 
     def dispatch_release(self, binding: HotkeyBinding) -> None:
         """Dispatch a hotkey release for the given binding."""
-        if (
-            binding.action in ("push_to_talk", "copy_to_clipboard")
-            and self.on_deactivate
-        ):
+        if binding.mode == "push_to_talk" and self.on_deactivate:
             self.on_deactivate()
-        # toggle release is a no-op; the toggle logic lives in the app layer
+        # toggle release is a no-op; the start/stop logic lives in the app layer

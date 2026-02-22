@@ -63,7 +63,7 @@ class DictationApp:
         self._inject_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._last_partial: str = ""
-        self._clipboard_mode: bool = False  # True when action == copy_to_clipboard
+        self._clipboard_mode: bool = False  # True when destination == clipboard
         self._clipboard_buffer: list[str] = []  # accumulates turns in clipboard mode
         self._session_id: int = 0  # current session index; set before each start
         self._recording_active: bool = (
@@ -233,14 +233,13 @@ class DictationApp:
         """Called when the hotkey is activated (start recording).
 
         ``binding`` is the full HotkeyBinding that was triggered.
-        ``binding.action`` is one of "push_to_talk", "toggle", or
-        "copy_to_clipboard" and determines what happens to the transcript.
+        ``binding.mode`` is ``"push_to_talk"`` or ``"toggle"``.
+        ``binding.destination`` is ``"direct_inject"`` or ``"clipboard"``.
         ``trigger`` is "hotkey" or "tray" and indicates what triggered recording.
         """
         self.maybe_reload_config()
 
-        action = binding.action
-        if action == "toggle":
+        if binding.mode == "toggle":
             with self._lock:
                 should_stop = self._recording_active
             if should_stop:
@@ -257,7 +256,7 @@ class DictationApp:
             if time.monotonic() - self._last_deactivate_time < debounce_s:
                 return
             self._recording_active = True
-            self._clipboard_mode = action == "copy_to_clipboard"
+            self._clipboard_mode = binding.destination == "clipboard"
             self._clipboard_buffer = []
             self._session_id += 1
             self._active_binding = binding
@@ -269,9 +268,10 @@ class DictationApp:
 
         lang = resolve_language(binding.language)
         logger.info(
-            "Recording started (trigger=%s action=%s language=%s inject_to=%s)",
+            "Recording started (trigger=%s mode=%s destination=%s language=%s inject_to=%s)",
             trigger,
-            action,
+            binding.mode,
+            binding.destination,
             lang or self.config.transcriber.language,
             binding.inject_to,
         )
@@ -452,16 +452,16 @@ class DictationApp:
             _fkey = {f"KEY_F{i}" for i in range(1, 25)}
             for b in self.config.hotkey.bindings:
                 if (
-                    b.action in ("push_to_talk", "copy_to_clipboard")
+                    b.mode == "push_to_talk"
                     and b.trigger not in _fkey
                     and not b.suppress
                 ):
                     logger.warning(
-                        "Binding %s (%s) has suppress=false on macOS: "
+                        "Binding %s (mode=%s) has suppress=false on macOS: "
                         "the key character will type into the active app while held. "
                         'Set "suppress": true to prevent this.',
                         b.trigger,
-                        b.action,
+                        b.mode,
                     )
 
         print(f"\n{'=' * 60}")
@@ -475,7 +475,7 @@ class DictationApp:
                 if binding.modifiers
                 else binding.trigger
             )
-            parts = [binding.action.replace("_", " ").title()]
+            parts = [f"{binding.mode.replace('_', ' ').title()} → {binding.destination.replace('_', ' ').title()}"]
             if binding.language:
                 parts.append(f"lang={binding.language}")
             if binding.inject_to != "default":
@@ -520,8 +520,8 @@ class DictationApp:
         else:
             # Use first push_to_talk binding, or a synthetic default
             binding = next(
-                (b for b in self.config.hotkey.bindings if b.action == "push_to_talk"),
-                HotkeyBinding(action="push_to_talk"),
+                (b for b in self.config.hotkey.bindings if b.mode == "push_to_talk"),
+                HotkeyBinding(mode="push_to_talk"),
             )
             self.on_activate(binding, trigger="tray")
 

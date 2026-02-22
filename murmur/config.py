@@ -25,8 +25,13 @@ class HotkeyBinding:
     Fields:
         modifiers: List of modifier key names (e.g. ``["KEY_LEFTCTRL", "KEY_LEFTMETA"]``).
         trigger: The key name that triggers the action (e.g. ``"KEY_SPACE"``).
-        action: The action to perform (e.g. ``"push_to_talk"``, ``"toggle"``,
-            ``"copy_to_clipboard"``).
+        mode: Activation mode.  ``"push_to_talk"`` records while the key is
+            held and stops on release.  ``"toggle"`` starts recording on the
+            first press and stops on a second press.
+        destination: Where the transcribed text is sent.  ``"direct_inject"``
+            types the text into the currently focused application.
+            ``"clipboard"`` copies the full session text to the system
+            clipboard on completion.
         language: Per-binding language override.  An ISO 639-1 code or
             AssemblyAI regional variant (e.g. ``"de"``, ``"en_au"``).  When
             ``None``, the global transcriber language is used.
@@ -43,7 +48,8 @@ class HotkeyBinding:
         default_factory=lambda: ["KEY_LEFTCTRL", "KEY_LEFTALT"]
     )
     trigger: str = "KEY_SPACE"
-    action: Literal["push_to_talk", "toggle", "copy_to_clipboard"] = "push_to_talk"
+    mode: Literal["push_to_talk", "toggle"] = "push_to_talk"
+    destination: Literal["direct_inject", "clipboard"] = "direct_inject"
     language: str | None = None
     inject_to: str = "default"
     append_enter: bool = False
@@ -66,18 +72,27 @@ def _default_bindings() -> list[HotkeyBinding]:
         HotkeyBinding(
             modifiers=[],
             trigger="KEY_F12",
-            action="push_to_talk",
+            mode="push_to_talk",
+            destination="direct_inject",
             suppress=True,
         ),
         HotkeyBinding(
             modifiers=["KEY_LEFTCTRL", meta],
             trigger="KEY_M",
-            action="toggle",
+            mode="toggle",
+            destination="direct_inject",
         ),
         HotkeyBinding(
             modifiers=["KEY_LEFTCTRL", meta],
             trigger="KEY_C",
-            action="copy_to_clipboard",
+            mode="push_to_talk",
+            destination="clipboard",
+        ),
+        HotkeyBinding(
+            modifiers=["KEY_LEFTCTRL", meta],
+            trigger="KEY_V",
+            mode="toggle",
+            destination="clipboard",
         ),
     ]
 
@@ -302,15 +317,12 @@ class DictationConfig:
         Uses setattr for JSON deserialization -- type safety is enforced
         by the dataclass field types at runtime.
 
-        Handles backward-compatible migration from old hotkey format
-        (modifiers/trigger/mode) to new bindings format.
         """
         config = cls()
         hotkey_data: Any = data.get("hotkey")
         if isinstance(hotkey_data, dict):
             raw_hotkey: dict[str, Any] = hotkey_data  # type: ignore[reportUnknownVariableType]
             if "bindings" in raw_hotkey:
-                # New format: deserialize bindings list
                 bindings_raw: Any = raw_hotkey["bindings"]
                 if isinstance(bindings_raw, list):
                     bindings: list[HotkeyBinding] = []
@@ -323,13 +335,15 @@ class DictationConfig:
                                 binding.modifiers = bd["modifiers"]
                             if "trigger" in bd:
                                 binding.trigger = bd["trigger"]
-                            if "action" in bd:
-                                # cast: JSON value must match Literal at runtime
-                                binding.action = cast(
-                                    Literal[
-                                        "push_to_talk", "toggle", "copy_to_clipboard"
-                                    ],
-                                    bd["action"],
+                            if "mode" in bd:
+                                binding.mode = cast(
+                                    Literal["push_to_talk", "toggle"],
+                                    bd["mode"],
+                                )
+                            if "destination" in bd:
+                                binding.destination = cast(
+                                    Literal["direct_inject", "clipboard"],
+                                    bd["destination"],
                                 )
                             if "language" in bd:
                                 raw_lang: Any = bd["language"]
@@ -342,29 +356,9 @@ class DictationConfig:
                                 binding.append_enter = bool(bd["append_enter"])
                             if "suppress" in bd:
                                 binding.suppress = bool(bd["suppress"])
-                            # tmux_target and tmux_keys are silently ignored for
-                            # backward compatibility — old configs won't break.
                             bindings.append(binding)
                     if bindings:
                         config.hotkey.bindings = bindings
-            elif "modifiers" in raw_hotkey or "trigger" in raw_hotkey:
-                # Old format: migrate to single binding
-                old_mods: list[str] = raw_hotkey.get(
-                    "modifiers", ["KEY_LEFTCTRL", "KEY_LEFTALT"]
-                )
-                old_trigger: str = raw_hotkey.get("trigger", "KEY_SPACE")
-                # cast: old JSON "mode" field maps to Literal action values
-                old_action = cast(
-                    Literal["push_to_talk", "toggle", "copy_to_clipboard"],
-                    raw_hotkey.get("mode", "push_to_talk"),
-                )
-                config.hotkey.bindings = [
-                    HotkeyBinding(
-                        modifiers=old_mods,
-                        trigger=old_trigger,
-                        action=old_action,
-                    )
-                ]
             # Apply remaining hotkey fields (backend, evdev_device, debounce)
             if "backend" in raw_hotkey:
                 # cast: JSON value must match Literal at runtime

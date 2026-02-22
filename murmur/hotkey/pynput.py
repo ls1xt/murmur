@@ -203,7 +203,7 @@ class _ResolvedBinding:
     modifiers: frozenset[Key | KeyCode]
     trigger: Key | KeyCode
     trigger_vk: int | None  # macOS CGEvent keycode; None if unknown
-    action: str
+    mode: str
     binding: HotkeyBinding = field(default_factory=HotkeyBinding)
     suppress: bool = False
 
@@ -244,16 +244,17 @@ def _resolve_bindings(bindings: list[HotkeyBinding]) -> list[_ResolvedBinding]:
                 modifiers=frozenset(mod_keys),
                 trigger=trigger_key,
                 trigger_vk=trigger_vk,
-                action=binding.action,
+                mode=binding.mode,
                 binding=binding,
                 suppress=binding.suppress,
             )
         )
         logger.debug(
-            "Resolved binding: %s+%s -> %s",
+            "Resolved binding: %s+%s -> mode=%s destination=%s",
             "+".join(str(m) for m in mod_keys),
             trigger_key,
-            binding.action,
+            binding.mode,
+            binding.destination,
         )
     return resolved
 
@@ -368,7 +369,7 @@ class PynputHotkeyListener(HotkeyListener):
                 modifiers=frozenset(self._listener.canonical(m) for m in b.modifiers),
                 trigger=self._listener.canonical(b.trigger),
                 trigger_vk=b.trigger_vk,  # preserved from _resolve_bindings
-                action=b.action,
+                mode=b.mode,
                 binding=b.binding,
                 suppress=b.suppress,
             )
@@ -388,10 +389,11 @@ class PynputHotkeyListener(HotkeyListener):
 
         for binding in self._bindings:
             logger.info(
-                "Binding: %s+%s -> %s",
+                "Binding: %s+%s -> mode=%s destination=%s",
                 "+".join(str(m) for m in binding.modifiers),
                 binding.trigger,
-                binding.action,
+                binding.mode,
+                binding.binding.destination,
             )
 
     def stop(self) -> None:
@@ -473,55 +475,53 @@ class PynputHotkeyListener(HotkeyListener):
             )
             if trigger_match and binding.modifiers.issubset(self._held):
                 any_binding_matched = True
-                if binding.action in ("push_to_talk", "copy_to_clipboard", "toggle"):  # noqa: SIM102
-                    # Ignore key-repeat from the SAME binding while a session
-                    # is in flight.  F12 (no modifiers) generates key-repeat
-                    # ~20x/s while held; only the first press should start.
-                    # A DIFFERENT toggle binding must still pass through so it
-                    # can stop a session started by another binding.
-                    if (
-                        self._ptt_press_dispatched
-                        and id(binding.binding) == self._ptt_dispatched_binding_id
-                    ):
-                        logger.debug(
-                            "Ignoring %s key-repeat (same binding, session in flight)",
-                            binding.action,
-                        )
-                        continue
-                if binding.action in ("push_to_talk", "copy_to_clipboard"):
+                # Ignore key-repeat from the SAME binding while a session is in
+                # flight.  F12 (no modifiers) generates key-repeat ~20x/s while
+                # held; only the first press should start.  A DIFFERENT toggle
+                # binding must still pass through so it can stop the session.
+                if (
+                    self._ptt_press_dispatched
+                    and id(binding.binding) == self._ptt_dispatched_binding_id
+                ):
+                    logger.debug(
+                        "Ignoring %s key-repeat (same binding, session in flight)",
+                        binding.mode,
+                    )
+                    continue
+                if binding.mode == "push_to_talk":
                     # Block re-activation within debounce window after release.
                     debounce_s = self._push_to_talk_debounce_ms / 1000.0
                     elapsed = time.monotonic() - self._ptt_last_release_time
                     if elapsed < debounce_s:
                         logger.debug(
                             "Ignoring %s: debounce (%.0fms remaining)",
-                            binding.action,
+                            binding.mode,
                             (debounce_s - elapsed) * 1000,
                         )
                         continue
                 logger.debug(
-                    "Hotkey pressed: %s+%s -> %s",
+                    "Hotkey pressed: %s+%s -> mode=%s",
                     "+".join(str(m) for m in binding.modifiers),
                     binding.trigger,
-                    binding.action,
+                    binding.mode,
                 )
-                if binding.action in ("push_to_talk", "copy_to_clipboard", "toggle"):
-                    self._ptt_press_dispatched = True
-                    self._ptt_dispatched_binding_id = id(binding.binding)
-                    self._active_action = binding.action
+                self._ptt_press_dispatched = True
+                self._ptt_dispatched_binding_id = id(binding.binding)
+                self._active_action = binding.mode
                 self.dispatch_action(binding.binding)
 
         # stop_on_keypress: any real, non-modifier, non-hotkey keypress stops
-        # an active *toggle* recording.  push_to_talk and copy_to_clipboard are
-        # hold-to-record and stop on key release, so they must not be
-        # interrupted by unrelated keypresses.  Injected events are already
-        # filtered above (injected=True guard), so only genuine user input
-        # reaches here.
+        # an active *toggle* recording.  push_to_talk is hold-to-record and
+        # stops on key release, so it must not be interrupted by unrelated
+        # keypresses.  Enter is excluded so users can press Enter mid-dictation
+        # without stopping the session.  Injected events are already filtered
+        # above (injected=True guard), so only genuine user input reaches here.
         if (
             not any_binding_matched
             and self._stop_on_keypress
             and self._active_action == "toggle"
             and canonical not in _MODIFIER_KEYS
+            and canonical is not Key.enter
             and self.on_deactivate is not None
         ):
             logger.debug("stop_on_keypress: stopping recording (key=%r)", canonical)
@@ -561,18 +561,18 @@ class PynputHotkeyListener(HotkeyListener):
                 and binding.modifiers.issubset(self._held)
             ):
                 logger.debug(
-                    "Hotkey released: %s -> %s",
+                    "Hotkey released: %s -> mode=%s",
                     binding.trigger,
-                    binding.action,
+                    binding.mode,
                 )
-                if binding.action in ("push_to_talk", "copy_to_clipboard"):
+                if binding.mode == "push_to_talk":
                     if not self._ptt_press_dispatched:
                         # Phantom release from a previous session: Space is
                         # back in self._held (new session) but no matching
                         # press was dispatched in this session yet.  Drop it.
                         logger.debug(
                             "Ignoring phantom release for %s (no press in flight)",
-                            binding.action,
+                            binding.mode,
                         )
                         continue
                     self._ptt_press_dispatched = False
@@ -584,7 +584,7 @@ class PynputHotkeyListener(HotkeyListener):
                     # consumes part of the debounce window and phantom
                     # Space presses buffered in the pynput queue slip through.
                     self._ptt_last_release_time = time.monotonic()
-                elif binding.action == "toggle":
+                else:
                     # Toggle: clear the key-repeat guard on release.
                     # The actual start/stop logic is handled in the app layer;
                     # no _dispatch_release needed here.  Do NOT clear
@@ -592,8 +592,6 @@ class PynputHotkeyListener(HotkeyListener):
                     # on_deactivate fires (via stop_on_keypress or re-press).
                     self._ptt_press_dispatched = False
                     self._ptt_dispatched_binding_id = None
-                else:
-                    self.dispatch_release(binding.binding)
 
         self._held.discard(canonical)
         if raw_vk is not None:
