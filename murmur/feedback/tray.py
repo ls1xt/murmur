@@ -13,7 +13,9 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
-from murmur.feedback._tray_common import create_icon_image as _create_icon_image  # noqa: F401 – re-exported
+from murmur.feedback._tray_common import (
+    create_icon_image as _create_icon_image,  # noqa: F401 – re-exported
+)
 
 logger = logging.getLogger(__name__)
 

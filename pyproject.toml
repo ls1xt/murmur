@@ -89,6 +89,7 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM"]
+ignore = ["E501"]  # line length enforced by formatter, not linter
 
 [tool.ruff.format]
 quote-style = "double"

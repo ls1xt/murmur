@@ -72,6 +72,51 @@ _EVDEV_TO_PYNPUT_CANONICAL: dict[str, Key | KeyCode] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Evdev-name → macOS CGEvent keycode table
+# ---------------------------------------------------------------------------
+# CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode) returns the
+# hardware virtual key code (kVK_*) from Carbon/HIToolbox/Events.h.
+# pynput's canonical() loses this VK after translating Key.fN to a
+# symbol-based KeyCode (vk=None), so we maintain our own static table here
+# for keys that may be used as suppress=True triggers.
+
+_EVDEV_TO_MACOS_VK: dict[str, int] = {
+    # Function keys (kVK_F* from Carbon Events.h)
+    "KEY_F1": 0x7A,
+    "KEY_F2": 0x78,
+    "KEY_F3": 0x63,
+    "KEY_F4": 0x76,
+    "KEY_F5": 0x60,
+    "KEY_F6": 0x61,
+    "KEY_F7": 0x62,
+    "KEY_F8": 0x64,
+    "KEY_F9": 0x65,
+    "KEY_F10": 0x6D,
+    "KEY_F11": 0x67,
+    "KEY_F12": 0x6F,
+    # Common special keys
+    "KEY_SPACE": 0x31,
+    "KEY_ENTER": 0x24,
+    "KEY_BACKSPACE": 0x33,
+    "KEY_ESC": 0x35,
+    "KEY_TAB": 0x30,
+    "KEY_DELETE": 0x75,
+    # Alpha keys (ANSI positions, layout-independent)
+    "KEY_A": 0x00, "KEY_B": 0x0B, "KEY_C": 0x08, "KEY_D": 0x02,
+    "KEY_E": 0x0E, "KEY_F": 0x03, "KEY_G": 0x05, "KEY_H": 0x04,
+    "KEY_I": 0x22, "KEY_J": 0x26, "KEY_K": 0x28, "KEY_L": 0x25,
+    "KEY_M": 0x2E, "KEY_N": 0x2D, "KEY_O": 0x1F, "KEY_P": 0x23,
+    "KEY_Q": 0x0C, "KEY_R": 0x0F, "KEY_S": 0x01, "KEY_T": 0x11,
+    "KEY_U": 0x20, "KEY_V": 0x09, "KEY_W": 0x0D, "KEY_X": 0x07,
+    "KEY_Y": 0x10, "KEY_Z": 0x06,
+    # Digit keys (main row)
+    "KEY_0": 0x1D, "KEY_1": 0x12, "KEY_2": 0x13, "KEY_3": 0x14,
+    "KEY_4": 0x15, "KEY_5": 0x17, "KEY_6": 0x16, "KEY_7": 0x1A,
+    "KEY_8": 0x1C, "KEY_9": 0x19,
+}
+
+
 def _translate_evdev_name(name: str) -> Key | KeyCode:
     """Translate a single evdev key name to its canonical pynput equivalent.
 
@@ -110,6 +155,7 @@ class _ResolvedBinding:
 
     modifiers: frozenset[Key | KeyCode]
     trigger: Key | KeyCode
+    trigger_vk: int | None  # macOS CGEvent keycode; None if unknown
     action: str
     tmux_target: str = ""
     tmux_keys: str = ""
@@ -127,10 +173,15 @@ def _resolve_bindings(bindings: list[HotkeyBinding]) -> list[_ResolvedBinding]:
         for mod_name in binding.modifiers:
             mod_keys.add(_translate_evdev_name(mod_name))
         trigger_key = _translate_evdev_name(binding.trigger)
+        # Look up the macOS CGEvent keycode from the evdev name directly.
+        # pynput's canonical() loses VK info for function keys, so we maintain
+        # _EVDEV_TO_MACOS_VK to get a reliable VK for darwin_intercept.
+        trigger_vk: int | None = _EVDEV_TO_MACOS_VK.get(binding.trigger)
         resolved.append(
             _ResolvedBinding(
                 modifiers=frozenset(mod_keys),
                 trigger=trigger_key,
+                trigger_vk=trigger_vk,
                 action=binding.action,
                 tmux_target=binding.tmux_target,
                 tmux_keys=binding.tmux_keys,
@@ -159,9 +210,10 @@ class PynputHotkeyListener(HotkeyListener):
     configured key bindings.  GlobalHotKeys silently fails for Ctrl+Alt
     combinations on macOS (pynput GitHub issue #297, unresolved).
 
-    Events are NOT suppressed -- keys pass through to the foreground
-    application normally.  This is intentional: macOS does not support
-    grab-and-forward like Linux evdev.
+    Bindings with ``suppress=True`` use an active CGEventTap
+    (``kCGEventTapOptionDefault``) so the key never reaches the foreground
+    application.  Bindings without suppression use a passive listen-only tap.
+    The active tap is installed only when at least one binding requires it.
 
     ``push_to_talk_debounce_ms`` is accepted for API compatibility with
     EvdevHotkeyListener but is not used -- macOS does not generate spurious
@@ -211,7 +263,11 @@ class PynputHotkeyListener(HotkeyListener):
             "on_release": self._on_release,
         }
         if has_suppress:
-            listener_kwargs["intercept"] = self._darwin_intercept
+            # pynput's base Listener filters kwargs by platform prefix ("darwin_")
+            # before storing in self._options; the darwin backend then reads
+            # self._options.get("intercept").  So the kwarg must be named
+            # "darwin_intercept", not "intercept".
+            listener_kwargs["darwin_intercept"] = self._darwin_intercept
         self._listener = keyboard.Listener(**listener_kwargs)
         self._listener.start()
 
@@ -224,6 +280,7 @@ class PynputHotkeyListener(HotkeyListener):
             _ResolvedBinding(
                 modifiers=frozenset(self._listener.canonical(m) for m in b.modifiers),
                 trigger=self._listener.canonical(b.trigger),
+                trigger_vk=b.trigger_vk,  # preserved from _resolve_bindings
                 action=b.action,
                 tmux_target=b.tmux_target,
                 tmux_keys=b.tmux_keys,
@@ -233,18 +290,13 @@ class PynputHotkeyListener(HotkeyListener):
         ]
 
         # Build set of VK codes for suppress=True bindings (for darwin_intercept).
-        # After canonicalization Key.f12 -> KeyCode(vk=0x6F); extract .vk.
-        self._suppressed_vk_codes = set()
-        for b in self._bindings:
-            if b.suppress:
-                trigger = b.trigger
-                vk = (
-                    trigger.value.vk
-                    if isinstance(trigger, Key)
-                    else getattr(trigger, "vk", None)
-                )
-                if vk is not None:
-                    self._suppressed_vk_codes.add(vk)
+        # Use trigger_vk from _EVDEV_TO_MACOS_VK -- reliable even after
+        # canonicalization which loses VK info for function keys.
+        self._suppressed_vk_codes = {
+            b.trigger_vk
+            for b in self._bindings
+            if b.suppress and b.trigger_vk is not None
+        }
 
         logger.info("pynput hotkey listener started")
 

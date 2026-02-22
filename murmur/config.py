@@ -35,6 +35,7 @@ class HotkeyBinding:
     # tmux_send_keys fields (only used when action == "tmux_send_keys")
     tmux_target: str = ""
     tmux_keys: str = ""
+    # suppress=True installs an active CGEventTap to swallow the key event
     suppress: bool = False
 
 

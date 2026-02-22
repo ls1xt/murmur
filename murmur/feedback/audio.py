@@ -17,6 +17,8 @@ import sounddevice as _sd  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 
+_AMPLITUDE = 0.3
+
 
 class AudioFeedback:
     """Generates PCM sine tone beeps for start/stop feedback.
@@ -94,7 +96,7 @@ class AudioFeedback:
             *[
                 int(
                     32767
-                    * 0.3
+                    * _AMPLITUDE
                     * math.sin(2.0 * math.pi * frequency * i / cls._SAMPLE_RATE)
                 )  # noqa: E501
                 for i in range(n)
@@ -108,8 +110,10 @@ class AudioFeedback:
                 wf.setframerate(cls._SAMPLE_RATE)
                 wf.writeframes(data)
         except Exception:
-            with open(fd, "wb"):  # ensure fd is closed
-                pass
+            import contextlib
+
+            with contextlib.suppress(OSError):
+                os.close(fd)
             os.unlink(path)
             raise
         return path
@@ -117,14 +121,16 @@ class AudioFeedback:
     @staticmethod
     def _play_tone(frequency: float, duration: float) -> None:
         """Generate and play a sine wave tone via sounddevice (fallback)."""
-        sample_rate = 44100
+        sample_rate = AudioFeedback._SAMPLE_RATE
         num_samples = int(sample_rate * duration)
 
         samples = b"".join(
             struct.pack(
                 "h",
                 int(
-                    32767 * 0.3 * math.sin(2.0 * math.pi * frequency * i / sample_rate)
+                    32767
+                    * _AMPLITUDE
+                    * math.sin(2.0 * math.pi * frequency * i / sample_rate)
                 ),
             )
             for i in range(num_samples)

@@ -17,8 +17,8 @@ import os
 import signal
 import subprocess
 import sys
-import time
 import threading
+import time
 import types
 
 from murmur.config import DictationConfig
@@ -352,6 +352,10 @@ def _setup_logging(config: DictationConfig) -> None:
     _filter = _SessionFilter()
     for handler in logging.root.handlers:
         handler.addFilter(_filter)
+    # websockets logs raw binary frames at DEBUG -- suppress to WARNING
+    # to keep logs readable. Set MURMUR_LOG_LEVEL=WEBSOCKETS_DEBUG to restore.
+    if config.log_level.upper() not in ("WEBSOCKETS_DEBUG",):
+        logging.getLogger("websockets").setLevel(logging.WARNING)
 
 
 def _get_dotted(obj: object, key: str) -> object:

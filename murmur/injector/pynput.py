@@ -82,16 +82,7 @@ class PynputInjector(TextInjector):
         if self._trailing_space:
             text = text + " "
 
-        if self._inject_strategy == "clipboard":
-            self._inject_via_clipboard(text)
-        elif self._inject_strategy == "clipboard-fallback":
-            if text.isascii():
-                self._type(text)
-            else:
-                self._inject_via_clipboard(text)
-        else:
-            # "pynput" strategy (default fallback)
-            self._type(text)
+        self._dispatch(text)
 
     def inject_raw(self, text: str) -> None:
         """Inject text without trailing space, routing through the configured strategy.
@@ -110,6 +101,10 @@ class PynputInjector(TextInjector):
 
         logger.debug("Injecting raw partial: %r", text[:80])
 
+        self._dispatch(text)
+
+    def _dispatch(self, text: str) -> None:
+        """Dispatch text to the configured injection strategy."""
         if self._inject_strategy == "clipboard":
             self._inject_via_clipboard(text)
         elif self._inject_strategy == "clipboard-fallback":
