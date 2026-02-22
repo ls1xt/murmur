@@ -61,7 +61,7 @@ class PynputInjector(TextInjector):
     def is_available(self) -> bool:
         """Check if pynput can inject text (Accessibility permission on macOS)."""
         try:
-            from ApplicationServices import (
+            from ApplicationServices import (  # pyright: ignore[reportMissingImports]
                 AXIsProcessTrusted,
             )
 

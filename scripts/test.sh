@@ -8,7 +8,9 @@ uv sync --group dev
 # On macOS, BlackHole is detected at runtime by the test fixture; if absent, those tests auto-skip.
 if [[ "$(uname -s)" == "Linux" ]]; then
     echo "==> Loading snd-aloop kernel module (Linux)"
-    sudo modprobe snd-aloop
+    if ! modprobe snd-aloop 2>/dev/null && ! sudo modprobe snd-aloop 2>/dev/null; then
+        echo "WARNING: Could not load snd-aloop — virtual-mic tests will be skipped" >&2
+    fi
 fi
 
 echo "==> Pre-commit checks"

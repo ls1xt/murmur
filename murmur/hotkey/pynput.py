@@ -400,7 +400,10 @@ class PynputHotkeyListener(HotkeyListener):
         if not self._suppressed_vk_codes:
             return event
         try:
-            from Quartz import CGEventGetIntegerValueField, kCGKeyboardEventKeycode
+            from Quartz import (  # pyright: ignore[reportMissingImports]
+                CGEventGetIntegerValueField,
+                kCGKeyboardEventKeycode,
+            )
 
             keycode = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
             if keycode in self._suppressed_vk_codes:

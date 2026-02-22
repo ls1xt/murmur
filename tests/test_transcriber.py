@@ -208,6 +208,10 @@ class TestAssemblyAIErrorHandling:
             "murmur.transcriber.assemblyai.threading.Thread",
             return_value=mock_thread,
         )
+        mocker.patch(
+            "murmur.transcriber.assemblyai._CallbackMicStream",
+            return_value=MagicMock(),
+        )
         return mock_v3
 
     def test_stream_error_calls_fatal(self, mocker: Any) -> None:

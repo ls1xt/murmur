@@ -27,6 +27,21 @@ def _mock_which(mocker: Any) -> Any:
     )
 
 
+def _mock_popen(mocker: Any) -> Any:
+    """Mock subprocess.Popen for wl-copy (stays alive to serve clipboard).
+
+    Returns the mock Popen class. poll() returns None (process still running)
+    so the post-launch check doesn't log an error and abort.
+    Also patches time.sleep to avoid delays in tests.
+    """
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None  # still running — clipboard is live
+    mock_popen = mocker.patch("murmur.injector.ydotool.subprocess.Popen")
+    mock_popen.return_value = mock_proc
+    mocker.patch("murmur.injector.ydotool.time.sleep")
+    return mock_popen
+
+
 @pytest.mark.linux_only
 class TestYdotoolInjector:
     """Test YdotoolInjector with mocked subprocess."""
@@ -186,21 +201,23 @@ class TestClipboardStrategy:
     def test_clipboard_strategy_uses_wl_copy(self, mocker: Any) -> None:
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
         mock_run.return_value = MagicMock(returncode=0)
+        mock_popen = _mock_popen(mocker)
         _mock_which(mocker)
 
         injector = YdotoolInjector(inject_strategy="clipboard", trailing_space=False)
         injector.inject("hello world")
 
-        # Should have two calls: wl-copy and ydotool key
-        assert mock_run.call_count == 2
+        # wl-copy via Popen (stays alive), ydotool key via run
+        assert mock_popen.call_count == 1
+        assert mock_run.call_count == 1
 
-        # First call: wl-copy
-        wl_copy_args: list[str] = mock_run.call_args_list[0][0][0]
+        # Popen call: wl-copy
+        wl_copy_args: list[str] = mock_popen.call_args[0][0]
         assert "wl-copy" in wl_copy_args[0]
         assert "hello world" in wl_copy_args
 
-        # Second call: ydotool key (Ctrl+V)
-        key_args: list[str] = mock_run.call_args_list[1][0][0]
+        # run call: ydotool key (Ctrl+V)
+        key_args: list[str] = mock_run.call_args[0][0]
         assert "key" in key_args
         assert "29:1" in key_args  # Ctrl down
         assert "47:1" in key_args  # V down
@@ -209,14 +226,16 @@ class TestClipboardStrategy:
         """Clipboard strategy sends ALL text through clipboard, even ASCII."""
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
         mock_run.return_value = MagicMock(returncode=0)
+        mock_popen = _mock_popen(mocker)
         _mock_which(mocker)
 
         injector = YdotoolInjector(inject_strategy="clipboard", trailing_space=False)
         injector.inject("plain ascii")
 
         # Still uses clipboard for ASCII text
-        assert mock_run.call_count == 2
-        wl_copy_args: list[str] = mock_run.call_args_list[0][0][0]
+        assert mock_popen.call_count == 1
+        assert mock_run.call_count == 1
+        wl_copy_args: list[str] = mock_popen.call_args[0][0]
         assert "wl-copy" in wl_copy_args[0]
 
     def test_clipboard_missing_wl_copy_calls_fatal(self, mocker: Any) -> None:
@@ -256,6 +275,7 @@ class TestClipboardFallbackStrategy:
     def test_non_ascii_uses_clipboard(self, mocker: Any) -> None:
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
         mock_run.return_value = MagicMock(returncode=0)
+        mock_popen = _mock_popen(mocker)
         _mock_which(mocker)
 
         injector = YdotoolInjector(
@@ -264,14 +284,16 @@ class TestClipboardFallbackStrategy:
         # Curly quote and em-dash: non-ASCII
         injector.inject("Hello\u2019s world\u2014nice")
 
-        # Should use clipboard path (wl-copy + ydotool key)
-        assert mock_run.call_count == 2
-        wl_copy_args: list[str] = mock_run.call_args_list[0][0][0]
+        # Should use clipboard path (wl-copy via Popen + ydotool key via run)
+        assert mock_popen.call_count == 1
+        assert mock_run.call_count == 1
+        wl_copy_args: list[str] = mock_popen.call_args[0][0]
         assert "wl-copy" in wl_copy_args[0]
 
     def test_accented_chars_use_clipboard(self, mocker: Any) -> None:
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
         mock_run.return_value = MagicMock(returncode=0)
+        mock_popen = _mock_popen(mocker)
         _mock_which(mocker)
 
         injector = YdotoolInjector(
@@ -279,9 +301,10 @@ class TestClipboardFallbackStrategy:
         )
         injector.inject("caf\u00e9")
 
-        # non-ASCII -> clipboard
-        assert mock_run.call_count == 2
-        wl_copy_args: list[str] = mock_run.call_args_list[0][0][0]
+        # non-ASCII -> clipboard (wl-copy via Popen + ydotool key via run)
+        assert mock_popen.call_count == 1
+        assert mock_run.call_count == 1
+        wl_copy_args: list[str] = mock_popen.call_args[0][0]
         assert "wl-copy" in wl_copy_args[0]
 
 
@@ -292,14 +315,16 @@ class TestInjectRawStrategyRouting:
     def test_inject_raw_non_ascii_uses_clipboard_in_fallback(self, mocker: Any) -> None:
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
         mock_run.return_value = MagicMock(returncode=0)
+        mock_popen = _mock_popen(mocker)
         _mock_which(mocker)
 
         injector = YdotoolInjector(inject_strategy="clipboard-fallback")
         injector.inject_raw("café")  # non-ASCII
 
-        # Should use clipboard: wl-copy + ydotool key
-        assert mock_run.call_count == 2
-        wl_copy_args: list[str] = mock_run.call_args_list[0][0][0]
+        # Should use clipboard: wl-copy via Popen + ydotool key via run
+        assert mock_popen.call_count == 1
+        assert mock_run.call_count == 1
+        wl_copy_args: list[str] = mock_popen.call_args[0][0]
         assert "wl-copy" in wl_copy_args[0]
         assert "café" in wl_copy_args
 
@@ -308,14 +333,16 @@ class TestInjectRawStrategyRouting:
     ) -> None:
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
         mock_run.return_value = MagicMock(returncode=0)
+        mock_popen = _mock_popen(mocker)
         _mock_which(mocker)
 
         injector = YdotoolInjector(inject_strategy="clipboard")
         injector.inject_raw("hello")  # ASCII
 
-        # Clipboard strategy: always wl-copy + ydotool key
-        assert mock_run.call_count == 2
-        wl_copy_args: list[str] = mock_run.call_args_list[0][0][0]
+        # Clipboard strategy: always wl-copy via Popen + ydotool key via run
+        assert mock_popen.call_count == 1
+        assert mock_run.call_count == 1
+        wl_copy_args: list[str] = mock_popen.call_args[0][0]
         assert "wl-copy" in wl_copy_args[0]
 
 
@@ -376,29 +403,30 @@ class TestCopyToClipboard:
     """Test copy_to_clipboard method."""
 
     def test_copy_to_clipboard_calls_wl_copy(self, mocker: Any) -> None:
-        mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
-        mock_run.return_value = MagicMock(returncode=0)
+        mock_popen = _mock_popen(mocker)
         _mock_which(mocker)
 
         injector = YdotoolInjector()
         injector.copy_to_clipboard("Hello world")
 
-        mock_run.assert_called_once()
-        args: list[str] = mock_run.call_args[0][0]
+        # copy_to_clipboard uses Popen (wl-copy stays alive to serve paste requests)
+        mock_popen.assert_called_once()
+        args: list[str] = mock_popen.call_args[0][0]
         assert "wl-copy" in args[0]
         assert "Hello world" in args
 
     def test_copy_to_clipboard_no_inject(self, mocker: Any) -> None:
         """copy_to_clipboard must NOT simulate a Ctrl+V paste."""
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
-        mock_run.return_value = MagicMock(returncode=0)
+        mock_popen = _mock_popen(mocker)
         _mock_which(mocker)
 
         injector = YdotoolInjector()
         injector.copy_to_clipboard("Hello world")
 
-        # Only one call: wl-copy (no ydotool key for Ctrl+V)
-        assert mock_run.call_count == 1
+        # Only wl-copy via Popen; no ydotool key press
+        assert mock_popen.call_count == 1
+        mock_run.assert_not_called()
 
     def test_copy_to_clipboard_empty_noop(self, mocker: Any) -> None:
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")

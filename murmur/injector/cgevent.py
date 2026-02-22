@@ -86,13 +86,13 @@ class CGEventInjector(TextInjector):
     def is_available(self) -> bool:
         """Check if Quartz and Accessibility are available."""
         try:
-            from Quartz import (
+            from Quartz import (  # pyright: ignore[reportMissingImports]
                 CGEventCreateKeyboardEvent,  # noqa: F401  # pyright: ignore[reportUnusedImport]
             )
         except ImportError:
             return False
         try:
-            from ApplicationServices import (
+            from ApplicationServices import (  # pyright: ignore[reportMissingImports]
                 AXIsProcessTrusted,
             )
 
@@ -126,7 +126,11 @@ class CGEventInjector(TextInjector):
         """Inject N backspace keypresses using the real kVK_Delete keycode."""
         if count <= 0:
             return
-        from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGSessionEventTap
+        from Quartz import (  # pyright: ignore[reportMissingImports]
+            CGEventCreateKeyboardEvent,
+            CGEventPost,
+            kCGSessionEventTap,
+        )
 
         source = self._get_source()
         logger.debug("Injecting %d backspaces", count)
@@ -140,7 +144,11 @@ class CGEventInjector(TextInjector):
 
     def inject_return(self) -> None:
         """Inject a Return/Enter keypress using the real kVK_Return keycode."""
-        from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGSessionEventTap
+        from Quartz import (  # pyright: ignore[reportMissingImports]
+            CGEventCreateKeyboardEvent,
+            CGEventPost,
+            kCGSessionEventTap,
+        )
 
         source = self._get_source()
         e_dn = CGEventCreateKeyboardEvent(source, _VK_RETURN, True)
@@ -169,7 +177,10 @@ class CGEventInjector(TextInjector):
         after NSApp and TSM are fully initialized on the main thread.
         """
         if self._source is None:
-            from Quartz import CGEventSourceCreate, kCGEventSourceStatePrivate
+            from Quartz import (  # pyright: ignore[reportMissingImports]
+                CGEventSourceCreate,
+                kCGEventSourceStatePrivate,
+            )
 
             self._source = CGEventSourceCreate(kCGEventSourceStatePrivate)  # type: ignore[assignment]
         return self._source  # type: ignore[return-value]
@@ -182,7 +193,7 @@ class CGEventInjector(TextInjector):
         terminal emulators, and native Cocoa apps all read the unicode string
         from the NSEvent generated from this CGEvent.
         """
-        from Quartz import (
+        from Quartz import (  # pyright: ignore[reportMissingImports]
             CGEventCreateKeyboardEvent,
             CGEventKeyboardSetUnicodeString,
             CGEventPost,
