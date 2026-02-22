@@ -84,8 +84,8 @@ Default hotkeys:
 | Key | Mode | Behaviour |
 |-----|------|-----------|
 | **F12** | Push-to-talk | Hold to record, release to inject |
-| **Ctrl+Alt+M** | Toggle | Press once to start, press again to stop |
-| **Ctrl+Alt+C** | Clipboard | Hold to record, release copies to clipboard |
+| **Ctrl+Cmd+M** *(macOS)* / **Ctrl+Alt+M** *(Linux)* | Toggle | Press once to start, press again to stop |
+| **Ctrl+Cmd+C** *(macOS)* / **Ctrl+Alt+C** *(Linux)* | Clipboard | Hold to record, release copies to clipboard |
 
 ## How It Works
 

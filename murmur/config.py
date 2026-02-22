@@ -40,7 +40,16 @@ class HotkeyBinding:
 
 
 def _default_bindings() -> list[HotkeyBinding]:
-    """Create the default hotkey configuration."""
+    """Create the default hotkey configuration.
+
+    On macOS, Cmd (KEY_LEFTMETA) is used instead of Alt (KEY_LEFTALT) because
+    macOS Option/Alt transforms key characters at the OS level (e.g. Alt+M →
+    'µ'), breaking hotkeys on non-US keyboard layouts.  Cmd never transforms
+    characters, so Ctrl+Cmd+key works on any layout.
+    """
+    import sys
+
+    meta = "KEY_LEFTMETA" if sys.platform == "darwin" else "KEY_LEFTALT"
     return [
         HotkeyBinding(
             modifiers=[],
@@ -49,12 +58,12 @@ def _default_bindings() -> list[HotkeyBinding]:
             suppress=True,
         ),
         HotkeyBinding(
-            modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
+            modifiers=["KEY_LEFTCTRL", meta],
             trigger="KEY_M",
             action="toggle",
         ),
         HotkeyBinding(
-            modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
+            modifiers=["KEY_LEFTCTRL", meta],
             trigger="KEY_C",
             action="copy_to_clipboard",
         ),

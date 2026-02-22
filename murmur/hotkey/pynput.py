@@ -167,8 +167,24 @@ def _resolve_bindings(bindings: list[HotkeyBinding]) -> list[_ResolvedBinding]:
 
     Raises ValueError if any evdev key name is unknown.
     """
+    import sys
+
     resolved: list[_ResolvedBinding] = []
     for binding in bindings:
+        # On macOS, Alt/Option transforms key characters at the OS level
+        # (e.g. Alt+M → 'µ'), so Alt-based hotkeys break on non-US layouts.
+        # Warn the user and suggest Cmd (KEY_LEFTMETA / KEY_RIGHTMETA) instead.
+        if sys.platform == "darwin" and any(
+            m in ("KEY_LEFTALT", "KEY_RIGHTALT") for m in binding.modifiers
+        ):
+            logger.warning(
+                "Binding %s+%s uses Alt/Option as a modifier. On macOS, "
+                "Option transforms key characters (e.g. Option+M → 'µ'), "
+                "which breaks hotkeys on non-US keyboard layouts. "
+                "Consider using Cmd (KEY_LEFTMETA) instead.",
+                "+".join(binding.modifiers),
+                binding.trigger,
+            )
         mod_keys: set[Key | KeyCode] = set()
         for mod_name in binding.modifiers:
             mod_keys.add(_translate_evdev_name(mod_name))
@@ -228,6 +244,9 @@ class PynputHotkeyListener(HotkeyListener):
         super().__init__()
         self._bindings: list[_ResolvedBinding] = _resolve_bindings(bindings)
         self._held: set[Key | KeyCode] = set()
+        # VK codes of currently-held keys — used as a layout-independent
+        # fallback for trigger matching (see _on_press / _on_release).
+        self._held_vks: set[int] = set()
         self._listener: keyboard.Listener | None = None
         self._push_to_talk_debounce_ms: int = push_to_talk_debounce_ms
         self._suppressed_vk_codes: set[int] = set()
@@ -315,6 +334,7 @@ class PynputHotkeyListener(HotkeyListener):
             self._listener = None
         self._held.clear()
         self._suppressed_vk_codes = set()
+        self._held_vks = set()
         self._ptt_last_release_time = 0.0
         self._ptt_press_dispatched = False
         logger.info("pynput hotkey listener stopped")
@@ -356,16 +376,31 @@ class PynputHotkeyListener(HotkeyListener):
         if injected:
             return  # ignore synthetic events from our own controller
 
+        # Capture the hardware VK before canonical() -- it may be stripped.
+        # On macOS, Option+M produces 'µ' at the character level but the
+        # hardware VK is still 0x2E (KEY_M).  We use this as a layout-
+        # independent fallback so bindings work on any keyboard layout.
+        raw_vk: int | None = getattr(key, "vk", None)
+
         canonical: Key | KeyCode = (
             self._listener.canonical(key) if self._listener is not None else key
         )
         self._held.add(canonical)
+        if raw_vk is not None:
+            self._held_vks.add(raw_vk)
         logger.debug(
             "KEY PRESS  raw=%r  canonical=%r  held=%r", key, canonical, self._held
         )
 
         for binding in self._bindings:
-            if binding.trigger == canonical and binding.modifiers.issubset(self._held):
+            # Match by character (normal) OR by hardware VK (handles
+            # Option-transformed chars like Alt+M → 'µ' on macOS).
+            trigger_match = binding.trigger == canonical or (
+                binding.trigger_vk is not None
+                and raw_vk is not None
+                and binding.trigger_vk == raw_vk
+            )
+            if trigger_match and binding.modifiers.issubset(self._held):
                 if binding.action in ("push_to_talk", "copy_to_clipboard", "toggle"):
                     # Ignore key-repeat while a session is already in flight.
                     # F12 (no modifiers) generates key-repeat events ~20x/s
@@ -413,15 +448,26 @@ class PynputHotkeyListener(HotkeyListener):
         if injected:
             return  # ignore synthetic releases from our own controller
 
+        raw_vk: int | None = getattr(key, "vk", None)
+
         canonical: Key | KeyCode = (
             self._listener.canonical(key) if self._listener is not None else key
         )
         logger.debug("KEY RELEASE raw=%r  canonical=%r", key, canonical)
 
         for binding in self._bindings:
+            trigger_match = binding.trigger == canonical or (
+                binding.trigger_vk is not None
+                and raw_vk is not None
+                and binding.trigger_vk == raw_vk
+            )
+            trigger_was_held = binding.trigger in self._held or (
+                binding.trigger_vk is not None
+                and binding.trigger_vk in self._held_vks
+            )
             if (
-                binding.trigger == canonical
-                and binding.trigger in self._held
+                trigger_match
+                and trigger_was_held
                 and binding.modifiers.issubset(self._held)
             ):
                 logger.debug(
@@ -457,3 +503,5 @@ class PynputHotkeyListener(HotkeyListener):
                     self._dispatch_release(binding.action)
 
         self._held.discard(canonical)
+        if raw_vk is not None:
+            self._held_vks.discard(raw_vk)
