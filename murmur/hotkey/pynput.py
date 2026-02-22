@@ -263,6 +263,10 @@ class PynputHotkeyListener(HotkeyListener):
         # is back in self._held).  Gating release dispatch on this flag ensures
         # each press is matched to exactly one release.
         self._ptt_press_dispatched: bool = False
+        # id() of the HotkeyBinding that set _ptt_press_dispatched.
+        # Key-repeat suppression only applies to the same binding — a different
+        # toggle binding must always be able to stop a running session.
+        self._ptt_dispatched_binding_id: int | None = None
 
     def start(self) -> None:
         """Start listening for hotkeys in a background thread.
@@ -399,12 +403,17 @@ class PynputHotkeyListener(HotkeyListener):
             )
             if trigger_match and binding.modifiers.issubset(self._held):
                 if binding.action in ("push_to_talk", "copy_to_clipboard", "toggle"):
-                    # Ignore key-repeat while a session is already in flight.
-                    # F12 (no modifiers) generates key-repeat events ~20x/s
-                    # while held; only the first press should start recording.
-                    if self._ptt_press_dispatched:
+                    # Ignore key-repeat from the SAME binding while a session
+                    # is in flight.  F12 (no modifiers) generates key-repeat
+                    # ~20x/s while held; only the first press should start.
+                    # A DIFFERENT toggle binding must still pass through so it
+                    # can stop a session started by another binding.
+                    if (
+                        self._ptt_press_dispatched
+                        and id(binding.binding) == self._ptt_dispatched_binding_id
+                    ):
                         logger.debug(
-                            "Ignoring %s key-repeat (session in flight)",
+                            "Ignoring %s key-repeat (same binding, session in flight)",
                             binding.action,
                         )
                         continue
@@ -427,6 +436,7 @@ class PynputHotkeyListener(HotkeyListener):
                 )
                 if binding.action in ("push_to_talk", "copy_to_clipboard", "toggle"):
                     self._ptt_press_dispatched = True
+                    self._ptt_dispatched_binding_id = id(binding.binding)
                 self._dispatch_action(binding.binding)
 
     def _on_release(self, key: Key | KeyCode | None, injected: bool = False) -> None:
@@ -492,6 +502,7 @@ class PynputHotkeyListener(HotkeyListener):
                     # The actual start/stop logic is handled in the app layer;
                     # no _dispatch_release needed here.
                     self._ptt_press_dispatched = False
+                    self._ptt_dispatched_binding_id = None
                 else:
                     self._dispatch_release(binding.binding)
 
