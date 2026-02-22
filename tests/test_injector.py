@@ -272,10 +272,9 @@ class TestClipboardFallbackStrategy:
         args: list[str] = mock_run.call_args[0][0]
         assert "type" in args
 
-    def test_non_ascii_uses_clipboard(self, mocker: Any) -> None:
+    def test_non_ascii_uses_ydotool_type(self, mocker: Any) -> None:
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
         mock_run.return_value = MagicMock(returncode=0)
-        mock_popen = _mock_popen(mocker)
         _mock_which(mocker)
 
         injector = YdotoolInjector(
@@ -284,16 +283,14 @@ class TestClipboardFallbackStrategy:
         # Curly quote and em-dash: non-ASCII
         injector.inject("Hello\u2019s world\u2014nice")
 
-        # Should use clipboard path (wl-copy via Popen + ydotool key via run)
-        assert mock_popen.call_count == 1
-        assert mock_run.call_count == 1
-        wl_copy_args: list[str] = mock_popen.call_args[0][0]
-        assert "wl-copy" in wl_copy_args[0]
+        # ydotool handles all text directly; clipboard is not used
+        mock_run.assert_called_once()
+        args: list[str] = mock_run.call_args[0][0]
+        assert "type" in args
 
-    def test_accented_chars_use_clipboard(self, mocker: Any) -> None:
+    def test_accented_chars_use_ydotool_type(self, mocker: Any) -> None:
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
         mock_run.return_value = MagicMock(returncode=0)
-        mock_popen = _mock_popen(mocker)
         _mock_which(mocker)
 
         injector = YdotoolInjector(
@@ -301,32 +298,28 @@ class TestClipboardFallbackStrategy:
         )
         injector.inject("caf\u00e9")
 
-        # non-ASCII -> clipboard (wl-copy via Popen + ydotool key via run)
-        assert mock_popen.call_count == 1
-        assert mock_run.call_count == 1
-        wl_copy_args: list[str] = mock_popen.call_args[0][0]
-        assert "wl-copy" in wl_copy_args[0]
+        # ydotool handles all text directly; clipboard is not used
+        mock_run.assert_called_once()
+        args: list[str] = mock_run.call_args[0][0]
+        assert "type" in args
 
 
 @pytest.mark.linux_only
 class TestInjectRawStrategyRouting:
     """Test that inject_raw routes through the configured strategy."""
 
-    def test_inject_raw_non_ascii_uses_clipboard_in_fallback(self, mocker: Any) -> None:
+    def test_inject_raw_non_ascii_uses_ydotool_in_fallback(self, mocker: Any) -> None:
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
         mock_run.return_value = MagicMock(returncode=0)
-        mock_popen = _mock_popen(mocker)
         _mock_which(mocker)
 
         injector = YdotoolInjector(inject_strategy="clipboard-fallback")
         injector.inject_raw("café")  # non-ASCII
 
-        # Should use clipboard: wl-copy via Popen + ydotool key via run
-        assert mock_popen.call_count == 1
-        assert mock_run.call_count == 1
-        wl_copy_args: list[str] = mock_popen.call_args[0][0]
-        assert "wl-copy" in wl_copy_args[0]
-        assert "café" in wl_copy_args
+        # ydotool handles all text directly; clipboard is not used
+        mock_run.assert_called_once()
+        args: list[str] = mock_run.call_args[0][0]
+        assert "type" in args
 
     def test_inject_raw_clipboard_strategy_always_uses_clipboard(
         self, mocker: Any
