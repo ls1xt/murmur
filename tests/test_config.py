@@ -221,6 +221,6 @@ class TestExampleConfig:
     def test_example_config_has_no_real_api_key(self) -> None:
         data: dict[str, Any] = json.loads(EXAMPLE_CONFIG.read_text())
         api_key = data.get("transcriber", {}).get("api_key", "")
-        assert api_key == "YOUR_API_KEY", (
+        assert api_key == "YOUR_API_KEY", (  # pragma: allowlist secret
             "examples/config.json contains a real API key — strip it before committing"
         )

@@ -11,8 +11,8 @@ if [[ "$(uname -s)" == "Linux" ]]; then
     sudo modprobe snd-aloop
 fi
 
-echo "==> Pre-commit checks (detect-secrets skipped outside of git commit)"
-SKIP=detect-secrets uv run pre-commit run --all-files
+echo "==> Pre-commit checks"
+uv run pre-commit run --all-files
 
 echo "==> Lint (ruff)"
 uv run ruff check .
