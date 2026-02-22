@@ -50,3 +50,6 @@ class Transcriber(ABC):
     def stop(self) -> None:
         """Stop streaming and disconnect."""
         ...
+
+    def test_connection(self) -> None:
+        """Optional startup connection test. Override in backends that support it."""

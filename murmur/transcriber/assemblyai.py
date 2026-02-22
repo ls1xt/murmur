@@ -161,6 +161,47 @@ class AssemblyAITranscriber(Transcriber):
         self._stop_done = threading.Event()
         self._stop_done.set()
 
+    def test_connection(self) -> None:
+        """Open a brief WebSocket connection to verify the API key and warm TLS.
+
+        Connects to AssemblyAI, waits for the Begin event (confirming auth),
+        then immediately disconnects. Costs ~$0.000042. Called at startup in a
+        background thread so the first real recording session connects fast.
+        """
+        logger.info("AssemblyAI: testing connection...")
+        connected = threading.Event()
+
+        client = _v3.StreamingClient(
+            _v3.StreamingClientOptions(
+                api_key=self._config.api_key,
+                api_host="streaming.assemblyai.com",
+            )
+        )
+
+        def _on_begin(c: Any, e: Any) -> None:
+            connected.set()
+
+        events: Any = _v3.StreamingEvents
+        client.on(events.Begin, _on_begin)
+
+        params: Any = _v3.StreamingParameters(
+            sample_rate=self._config.sample_rate,
+            format_turns=self._config.format_turns,
+            encoding=_v3.Encoding.pcm_s16le,
+        )
+
+        try:
+            client.connect(params)
+            if connected.wait(timeout=5.0):
+                logger.info("AssemblyAI connection test OK (API key valid, TLS warmed)")
+            else:
+                logger.warning("AssemblyAI connection test: no Begin event within 5s")
+        except Exception as e:
+            logger.warning("AssemblyAI connection test failed: %s", e)
+        finally:
+            with contextlib.suppress(Exception):
+                client.disconnect(terminate=True)
+
     def start(self) -> None:
         """Start mic capture and streaming to AssemblyAI."""
         # Wait for any in-progress stop() to finish before claiming the slot.

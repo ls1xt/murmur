@@ -258,6 +258,16 @@ class DictationApp:
         """Start the dictation app. Blocks until interrupted."""
         self._running = True
 
+        # Pre-warm the WebSocket connection to AssemblyAI in the background.
+        # Connects, waits for the Begin event (API key verified), then
+        # disconnects immediately.  Costs ~$0.000042 but ensures the first real
+        # recording session connects in <1s instead of ~3s cold.
+        threading.Thread(
+            target=self.transcriber.test_connection,
+            daemon=True,
+            name="aai-connection-test",
+        ).start()
+
         if sys.platform == "darwin":
             from murmur.platform.macos import check_accessibility, check_microphone
 
