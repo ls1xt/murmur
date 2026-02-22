@@ -17,8 +17,6 @@ import sounddevice as _sd  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 
-_AMPLITUDE = 0.3
-
 
 class AudioFeedback:
     """Generates PCM sine tone beeps for start/stop feedback.
@@ -32,16 +30,25 @@ class AudioFeedback:
     _SAMPLE_RATE = 44100
 
     def __init__(
-        self, enabled: bool = True, start_hz: float = 440.0, stop_hz: float = 880.0
+        self,
+        enabled: bool = True,
+        start_hz: float = 440.0,
+        stop_hz: float = 880.0,
+        amplitude: float = 0.3,
+        start_duration_ms: int = 100,
+        stop_duration_ms: int = 100,
     ) -> None:
         self._enabled = enabled
         self._start_hz = start_hz
         self._stop_hz = stop_hz
+        self._amplitude = amplitude
+        self._start_duration_ms = start_duration_ms
+        self._stop_duration_ms = stop_duration_ms
         self._start_wav: str | None = None
 
-        if enabled and sys.platform == "darwin":
+        if enabled and start_duration_ms > 0 and sys.platform == "darwin":
             try:
-                self._start_wav = self._write_wav(start_hz, 0.1)
+                self._start_wav = self._write_wav(start_hz, start_duration_ms / 1000.0, amplitude)
                 logger.debug("Pre-generated start WAV: %s", self._start_wav)
             except Exception as exc:
                 logger.debug("WAV pre-generation failed, using sounddevice: %s", exc)
@@ -52,7 +59,7 @@ class AudioFeedback:
 
     def play_start(self) -> None:
         """Play a short beep indicating recording started (non-blocking)."""
-        if not self._enabled:
+        if not self._enabled or self._start_duration_ms <= 0:
             return
         if self._start_wav:
             # afplay starts near-instantly; fire-and-forget
@@ -66,7 +73,9 @@ class AudioFeedback:
             except Exception as exc:
                 logger.debug("afplay failed: %s", exc)
         threading.Thread(
-            target=self._play_tone, args=(self._start_hz, 0.1), daemon=True
+            target=self._play_tone,
+            args=(self._start_hz, self._start_duration_ms / 1000.0, self._amplitude),
+            daemon=True,
         ).start()
 
     def play_stop(self) -> None:
@@ -79,16 +88,16 @@ class AudioFeedback:
         adds ~400 ms of overhead on top of the audio duration, making it worse
         than sounddevice for this blocking call.
         """
-        if not self._enabled:
+        if not self._enabled or self._stop_duration_ms <= 0:
             return
-        self._play_tone(self._stop_hz, 0.1)
+        self._play_tone(self._stop_hz, self._stop_duration_ms / 1000.0, self._amplitude)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     @classmethod
-    def _write_wav(cls, frequency: float, duration: float) -> str:
+    def _write_wav(cls, frequency: float, duration: float, amplitude: float = 0.3) -> str:
         """Generate a sine-wave WAV file and return its path."""
         n = int(cls._SAMPLE_RATE * duration)
         data = struct.pack(
@@ -96,7 +105,7 @@ class AudioFeedback:
             *[
                 int(
                     32767
-                    * _AMPLITUDE
+                    * amplitude
                     * math.sin(2.0 * math.pi * frequency * i / cls._SAMPLE_RATE)
                 )  # noqa: E501
                 for i in range(n)
@@ -119,7 +128,7 @@ class AudioFeedback:
         return path
 
     @staticmethod
-    def _play_tone(frequency: float, duration: float) -> None:
+    def _play_tone(frequency: float, duration: float, amplitude: float = 0.3) -> None:
         """Generate and play a sine wave tone via sounddevice (fallback)."""
         sample_rate = AudioFeedback._SAMPLE_RATE
         num_samples = int(sample_rate * duration)
@@ -129,7 +138,7 @@ class AudioFeedback:
                 "h",
                 int(
                     32767
-                    * _AMPLITUDE
+                    * amplitude
                     * math.sin(2.0 * math.pi * frequency * i / sample_rate)
                 ),
             )

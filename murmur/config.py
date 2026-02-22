@@ -50,13 +50,8 @@ def _default_bindings() -> list[HotkeyBinding]:
         ),
         HotkeyBinding(
             modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
-            trigger="KEY_K",
-            action="toggle_start",
-        ),
-        HotkeyBinding(
-            modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
-            trigger="KEY_L",
-            action="toggle_stop",
+            trigger="KEY_M",
+            action="toggle",
         ),
         HotkeyBinding(
             modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
@@ -115,6 +110,9 @@ class FeedbackConfig:
     start_hz: float = 440.0
     stop_hz: float = 880.0
     visual_enabled: bool = False
+    start_duration_ms: int = 100
+    stop_duration_ms: int = 100
+    amplitude: float = 0.3
 
 
 @dataclass

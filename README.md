@@ -79,7 +79,13 @@ murmur daemon status                   # check if running
 murmur daemon enable                   # install as system service
 ```
 
-Hold **Ctrl+Alt+Space** and speak. Release to inject text at the cursor.
+Default hotkeys:
+
+| Key | Mode | Behaviour |
+|-----|------|-----------|
+| **F12** | Push-to-talk | Hold to record, release to inject |
+| **Ctrl+Alt+M** | Toggle | Press once to start, press again to stop |
+| **Ctrl+Alt+C** | Clipboard | Hold to record, release copies to clipboard |
 
 ## How It Works
 
@@ -121,8 +127,11 @@ Config is stored at `~/.config/murmur/config.json`.
 ```bash
 murmur config                                       # view all settings
 murmur config --key transcriber.api_key --value K  # set API key
-murmur config --key notify.level --value verbose    # change notify level
+murmur config --key notify.level --value verbose                     # change notify level
 murmur config --key transcriber.keyterms --value "PyTorch,kubectl"  # custom vocab
+murmur config --key feedback.start_duration_ms --value 0            # disable start beep
+murmur config --key feedback.stop_duration_ms --value 200           # longer stop beep
+murmur config --key feedback.amplitude --value 0.1                  # quieter beeps
 ```
 
 Or set the API key via environment variable:
@@ -160,6 +169,7 @@ Grant Accessibility permissions: System Settings → Privacy & Security → Acce
 ```
 murmur/
 ├── main.py              # CLI entry point (config, record, daemon subcommands)
+├── app.py               # DictationApp — hotkey → transcriber → injector pipeline
 ├── config.py            # Dataclass-based configuration
 ├── setup_wizard.py      # First-run setup (GUI or terminal)
 ├── hotkey/              # evdev (Linux) or pynput (macOS) listeners

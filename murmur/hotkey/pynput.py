@@ -366,7 +366,7 @@ class PynputHotkeyListener(HotkeyListener):
 
         for binding in self._bindings:
             if binding.trigger == canonical and binding.modifiers.issubset(self._held):
-                if binding.action in ("push_to_talk", "copy_to_clipboard"):
+                if binding.action in ("push_to_talk", "copy_to_clipboard", "toggle"):
                     # Ignore key-repeat while a session is already in flight.
                     # F12 (no modifiers) generates key-repeat events ~20x/s
                     # while held; only the first press should start recording.
@@ -376,6 +376,7 @@ class PynputHotkeyListener(HotkeyListener):
                             binding.action,
                         )
                         continue
+                if binding.action in ("push_to_talk", "copy_to_clipboard"):
                     # Block re-activation within debounce window after release.
                     debounce_s = self._push_to_talk_debounce_ms / 1000.0
                     elapsed = time.monotonic() - self._ptt_last_release_time
@@ -392,7 +393,7 @@ class PynputHotkeyListener(HotkeyListener):
                     binding.trigger,
                     binding.action,
                 )
-                if binding.action in ("push_to_talk", "copy_to_clipboard"):
+                if binding.action in ("push_to_talk", "copy_to_clipboard", "toggle"):
                     self._ptt_press_dispatched = True
                 self._dispatch_action(
                     binding.action,
@@ -447,6 +448,11 @@ class PynputHotkeyListener(HotkeyListener):
                     # consumes part of the debounce window and phantom
                     # Space presses buffered in the pynput queue slip through.
                     self._ptt_last_release_time = time.monotonic()
+                elif binding.action == "toggle":
+                    # Toggle: clear the key-repeat guard on release.
+                    # The actual start/stop logic is handled in the app layer;
+                    # no _dispatch_release needed here.
+                    self._ptt_press_dispatched = False
                 else:
                     self._dispatch_release(binding.action)
 

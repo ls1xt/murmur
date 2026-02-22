@@ -59,14 +59,12 @@ class HotkeyListener(ABC):
                 logger.warning(
                     "tmux_send_keys binding missing tmux_target or tmux_keys"
                 )
-        elif action in ("push_to_talk", "toggle_start", "copy_to_clipboard"):
+        elif action in ("push_to_talk", "toggle", "copy_to_clipboard"):
             if self._on_activate:
                 self._on_activate(action)
-        elif action == "toggle_stop" and self._on_deactivate:
-            self._on_deactivate()
 
     def _dispatch_release(self, action: str) -> None:
         """Dispatch a hotkey release by action name."""
         if action in ("push_to_talk", "copy_to_clipboard") and self._on_deactivate:
             self._on_deactivate()
-        # toggle_start and toggle_stop releases are no-ops
+        # toggle release is a no-op; the toggle logic lives in the app layer

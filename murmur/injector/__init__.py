@@ -28,6 +28,13 @@ def create_injector(config: InjectorConfig) -> TextInjector:
                 inject_strategy=config.inject_strategy,
                 key_delay=config.key_delay,
             )
+        case "cgevent":
+            from murmur.injector.cgevent import CGEventInjector
+
+            return CGEventInjector(
+                trailing_space=config.trailing_space,
+                key_delay=config.key_delay,
+            )
         case "auto":
             if sys.platform == "linux":
                 from murmur.injector.ydotool import YdotoolInjector
