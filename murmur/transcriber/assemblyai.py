@@ -175,6 +175,13 @@ class AssemblyAITranscriber(Transcriber):
         self._stop_done.set()
         self._current_language: str | None = None  # set on start(), used by reconnect()
         self._last_partial: str = ""
+        # Set when test_connection() finishes so start() can wait for it to avoid
+        # running two concurrent AssemblyAI sessions (which causes code-1006 closure).
+        self._test_done = threading.Event()
+        self._test_done.set()  # no test running initially
+        # Per-session flag: prevents the SDK's double-error bug (both _read_thread and
+        # _write_thread can fire Error callbacks) from triggering fatal_from_thread twice.
+        self._error_fired = threading.Event()
 
     @property
     def session_gen(self) -> int:
@@ -186,7 +193,7 @@ class AssemblyAITranscriber(Transcriber):
         """Last partial transcript received."""
         return self._last_partial
 
-    def test_connection(self) -> None:
+    def test_connection(self) -> None:  # noqa: C901
         """Warm PortAudio and the AssemblyAI WebSocket at startup.
 
         1. Opens and immediately closes a mic stream so PortAudio initialises
@@ -200,6 +207,13 @@ class AssemblyAITranscriber(Transcriber):
 
         Called in a background thread from DictationApp.run().
         """
+        self._test_done.clear()
+        try:
+            self._run_test_connection()
+        finally:
+            self._test_done.set()
+
+    def _run_test_connection(self) -> None:
         # Step 1: warm PortAudio
         logger.info("AssemblyAI: warming PortAudio...")
         try:
@@ -252,6 +266,11 @@ class AssemblyAITranscriber(Transcriber):
 
     def start(self, language: str | None = None) -> None:
         """Start mic capture and streaming to AssemblyAI."""
+        # Wait for test_connection() to finish so we don't open two concurrent
+        # AssemblyAI sessions (which causes the server to drop one with code 1006).
+        if not self._test_done.wait(timeout=10.0):
+            logger.warning("test_connection still running after 10s; starting anyway")
+
         # Wait for any in-progress stop() to finish before claiming the slot.
         # This prevents "Too many concurrent sessions" from AssemblyAI.
         if not self._stop_done.wait(timeout=5.0):
@@ -265,6 +284,7 @@ class AssemblyAITranscriber(Transcriber):
                 logger.warning("Already streaming")
                 return
             self._streaming = True
+        self._error_fired.clear()  # reset per-session dedup guard
         self._all_text_this_session = []
         self._session_gen += 1
         my_gen = self._session_gen
@@ -492,6 +512,7 @@ class AssemblyAITranscriber(Transcriber):
                 # Re-increment generation to invalidate stale callbacks
                 self._session_gen += 1
                 my_gen = self._session_gen
+                self._error_fired.clear()  # reset dedup guard for new reconnect
 
                 reconnect_client: Any = _v3.StreamingClient(
                     _v3.StreamingClientOptions(
@@ -574,16 +595,32 @@ class AssemblyAITranscriber(Transcriber):
             )
             return
 
+        # Deduplicate: the SDK's _read_thread and _write_thread can both call
+        # _handle_error when the connection drops, firing this callback twice.
+        if self._error_fired.is_set():
+            logger.debug("Duplicate error event suppressed (gen=%d): %s", gen, error)
+            return
+        self._error_fired.set()
+
         error_str = str(error)
+        # StreamingError.code holds the numeric WebSocket close code; use it
+        # directly because str(StreamingError("", code=1006)) == "" (empty).
+        error_code: int | None = getattr(error, "code", None)
 
         # Classify error codes for user-friendly messages
-        if "1008" in error_str:
+        if error_code == 1008 or "1008" in error_str:
             message = (
                 "AssemblyAI auth error (code 1008): "
                 "check your API key and account balance"
             )
         elif "3005" in error_str:
             message = "AssemblyAI session expired (code 3005)"
+        elif not error_str:
+            # Code 1006 = abnormal closure (TCP dropped, no close frame).
+            # This often means a concurrent session caused the server to drop
+            # one connection, or a transient network issue.
+            code_str = f" (code {error_code})" if error_code is not None else ""
+            message = f"WebSocket connection closed unexpectedly{code_str}"
         else:
             message = f"WebSocket error: {error_str}"
 
