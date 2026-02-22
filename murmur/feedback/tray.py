@@ -11,11 +11,17 @@ import logging
 import os
 import sys
 from collections.abc import Callable
-from typing import Any
+from typing import Protocol
 
 from murmur.feedback._tray_common import (
-    create_icon_image as _create_icon_image,  # noqa: F401 – re-exported
+    TrayState,
+    create_icon_image,  # noqa: F401 – re-exported  # pyright: ignore[reportUnusedImport]
 )
+
+
+class _TrayBackend(Protocol):
+    def set_state(self, state: TrayState, reason: str) -> None: ...
+    def stop(self) -> None: ...
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +40,7 @@ class TrayIcon:
     ) -> None:
         self._on_quit = on_quit
         self._on_activate = on_activate
-        self._backend: Any = None
+        self._backend: _TrayBackend | None = None
         self._available = False
 
     @property
@@ -42,8 +48,23 @@ class TrayIcon:
         """Whether the tray icon is active and visible."""
         return self._available
 
+    @available.setter
+    def available(self, value: bool) -> None:
+        """Set availability of the tray icon."""
+        self._available = value
+
+    @property
+    def backend(self) -> _TrayBackend | None:
+        """The current backend implementation."""
+        return self._backend
+
+    @backend.setter
+    def backend(self, value: _TrayBackend | None) -> None:
+        """Set the backend implementation."""
+        self._backend = value
+
     @staticmethod
-    def _is_sway() -> bool:
+    def is_sway() -> bool:
         """Return True if running under Sway compositor.
 
         Sway's swaybar speaks StatusNotifierItem (SNI), not AppIndicator3.
@@ -57,7 +78,7 @@ class TrayIcon:
 
         Gracefully handles import failures and display errors.
         """
-        if self._is_sway():
+        if self.is_sway():
             self._start_sni()
             return
         try:
@@ -92,7 +113,7 @@ class TrayIcon:
         when it returns the event loop exits.  Falls back to calling
         ``setup_fn()`` directly if the tray is unavailable.
         """
-        if self._is_sway():
+        if self.is_sway():
             self._start_sni()
             setup_fn()
             return
@@ -108,7 +129,7 @@ class TrayIcon:
             self._available = False
             setup_fn()
 
-    def set_state(self, state: str, reason: str = "") -> None:
+    def set_state(self, state: TrayState, reason: str = "") -> None:
         """Update tray icon to reflect new state. Thread-safe.
 
         No-op if tray is unavailable.

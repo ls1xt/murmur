@@ -1,4 +1,3 @@
-# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportMissingImports=false, reportUnusedImport=false
 """
 First-run setup wizard for murmur.
 
@@ -22,16 +21,16 @@ def _has_display() -> bool:
 def _customtkinter_available() -> bool:
     """Return True if customtkinter can be imported."""
     try:
-        import customtkinter  # noqa: F401  # type: ignore[import-untyped]
+        import customtkinter  # noqa: F401  # pyright: ignore[reportUnusedImport]
 
         return True
     except ImportError:
         return False
 
 
-def _show_gui_dialog(config: DictationConfig) -> bool:  # type: ignore[return]
+def _show_gui_dialog(config: DictationConfig) -> bool:
     """Show the GUI setup dialog. Returns True if setup completed."""
-    import customtkinter as ctk  # type: ignore[import-untyped]
+    import customtkinter as ctk
 
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("blue")

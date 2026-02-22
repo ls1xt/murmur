@@ -25,8 +25,12 @@ import logging
 import subprocess
 import time
 import unicodedata
+from typing import TYPE_CHECKING, Any
 
 from murmur.injector.base import TextInjector
+
+if TYPE_CHECKING:
+    pass  # Quartz doesn't expose typed stubs, use Any
 
 logger = logging.getLogger(__name__)
 
@@ -77,17 +81,17 @@ class CGEventInjector(TextInjector):
         # before NSApp/TSM finishes initializing on the main thread, otherwise
         # pynput's listener thread calling UCKeyTranslate → TSM may abort with
         # "_HaveOnlyOneKeyboardInputSource" assertion failure.
-        self._source: object | None = None
+        self._source: Any = None
 
     def is_available(self) -> bool:
         """Check if Quartz and Accessibility are available."""
         try:
-            from Quartz import CGEventCreateKeyboardEvent  # noqa: F401
+            from Quartz import CGEventCreateKeyboardEvent  # noqa: F401  # pyright: ignore[reportUnusedImport]
         except ImportError:
             return False
         try:
             from ApplicationServices import (
-                AXIsProcessTrusted,  # type: ignore[import-untyped]
+                AXIsProcessTrusted,
             )
 
             return bool(AXIsProcessTrusted())
@@ -156,7 +160,7 @@ class CGEventInjector(TextInjector):
         if proc.returncode != 0:
             logger.error("pbcopy failed (rc=%d)", proc.returncode)
 
-    def _get_source(self) -> object:
+    def _get_source(self) -> Any:
         """Return (lazily creating) the private CGEventSource.
 
         Deferred until first injection so that CGEventSourceCreate is called
@@ -165,8 +169,8 @@ class CGEventInjector(TextInjector):
         if self._source is None:
             from Quartz import CGEventSourceCreate, kCGEventSourceStatePrivate
 
-            self._source = CGEventSourceCreate(kCGEventSourceStatePrivate)
-        return self._source
+            self._source = CGEventSourceCreate(kCGEventSourceStatePrivate)  # type: ignore[assignment]
+        return self._source  # type: ignore[return-value]
 
     def _type(self, text: str) -> None:
         """Post key-down/key-up pairs for each character at session tap level.
@@ -176,12 +180,7 @@ class CGEventInjector(TextInjector):
         terminal emulators, and native Cocoa apps all read the unicode string
         from the NSEvent generated from this CGEvent.
         """
-        from Quartz import (
-            CGEventCreateKeyboardEvent,
-            CGEventKeyboardSetUnicodeString,
-            CGEventPost,
-            kCGSessionEventTap,
-        )
+        from Quartz import CGEventCreateKeyboardEvent, CGEventKeyboardSetUnicodeString, CGEventPost, kCGSessionEventTap
 
         source = self._get_source()
         for char in text:

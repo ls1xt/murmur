@@ -87,7 +87,7 @@ class TestE2ETranscription:
 
         assert not transcriber.is_streaming
 
-        app._on_activate(HotkeyBinding(action="push_to_talk"))
+        app.on_activate(HotkeyBinding(action="push_to_talk"))
 
         started = _wait_for(lambda: transcriber.is_streaming)
         assert started, "Transcriber did not start streaming within 10s"
@@ -95,7 +95,7 @@ class TestE2ETranscription:
         # Brief pause — say something aloud to get a transcript
         time.sleep(3.0)
 
-        app._on_deactivate()
+        app.on_deactivate()
 
         stopped = _wait_for(lambda: not transcriber.is_streaming)
         assert stopped, "Transcriber did not stop within 10s"
@@ -111,10 +111,10 @@ class TestE2ETranscription:
         app, transcriber, _injector = _make_app(real_api_key, mocker)
         from murmur.transcriber import assemblyai as _aai_mod
 
-        app._on_activate(HotkeyBinding(action="push_to_talk"))
+        app.on_activate(HotkeyBinding(action="push_to_talk"))
         _wait_for(lambda: transcriber.is_streaming)
         time.sleep(2.0)
-        app._on_deactivate()
+        app.on_deactivate()
         _wait_for(lambda: not transcriber.is_streaming)
 
         _aai_mod.fatal_from_thread.assert_not_called()  # type: ignore[attr-defined]
@@ -124,8 +124,8 @@ class TestE2ETranscription:
         app, transcriber, _injector = _make_app(real_api_key, mocker)
 
         for _ in range(2):
-            app._on_activate(HotkeyBinding(action="push_to_talk"))
+            app.on_activate(HotkeyBinding(action="push_to_talk"))
             assert _wait_for(lambda: transcriber.is_streaming), "Did not start"
             time.sleep(2.0)
-            app._on_deactivate()
+            app.on_deactivate()
             assert _wait_for(lambda: not transcriber.is_streaming), "Did not stop"

@@ -24,8 +24,8 @@ class TestAudioFeedback:
         mock_thread_cls.return_value = mock_thread
 
         fb = AudioFeedback(enabled=True)
-        fb._enabled = True
-        fb._start_wav = None  # force threading path (skip macOS afplay branch)
+        # Force threading path (skip macOS afplay branch)
+        fb.start_wav = None
         fb.play_start()
 
         mock_thread_cls.assert_called_once()
@@ -35,32 +35,31 @@ class TestAudioFeedback:
         assert call_args.kwargs["args"] == (440.0, 0.1, 0.3)
 
     def test_enabled_plays_stop_synchronous(self, mocker: Any) -> None:
-        """play_stop calls _play_tone directly (blocking, no thread)."""
-        mock_play = mocker.patch.object(AudioFeedback, "_play_tone")
+        """play_stop calls play_tone directly (blocking, no thread)."""
+        mock_play = mocker.patch.object(AudioFeedback, "play_tone")
 
         fb = AudioFeedback(enabled=True)
-        fb._enabled = True
         fb.play_stop()
 
         mock_play.assert_called_once_with(880.0, 0.1, 0.3)
 
     def test_play_tone_noop_on_error(self, mocker: Any) -> None:
-        """_play_tone is a no-op (logs warning) when sounddevice raises."""
+        """play_tone is a no-op (logs warning) when sounddevice raises."""
         mocker.patch(
             "murmur.feedback.audio._sd.RawOutputStream",
             side_effect=Exception("no device"),
         )
         # Should not raise
-        AudioFeedback._play_tone(440, 0.1)
+        AudioFeedback.play_tone(440, 0.1)
 
     def test_play_tone_with_mock_sounddevice(self, mocker: Any) -> None:
-        """_play_tone opens a stream, writes samples, and closes it."""
+        """play_tone opens a stream, writes samples, and closes it."""
         mock_stream = MagicMock()
         mocker.patch(
             "murmur.feedback.audio._sd.RawOutputStream", return_value=mock_stream
         )
 
-        AudioFeedback._play_tone(440, 0.05)
+        AudioFeedback.play_tone(440, 0.05)
 
         mock_stream.start.assert_called_once()
         mock_stream.write.assert_called_once()
@@ -70,5 +69,5 @@ class TestAudioFeedback:
     def test_custom_frequencies_stored(self) -> None:
         """Custom start_hz and stop_hz are stored on the instance."""
         fb = AudioFeedback(enabled=True, start_hz=523.0, stop_hz=1047.0)
-        assert fb._start_hz == 523.0
-        assert fb._stop_hz == 1047.0
+        assert fb.start_hz == 523.0
+        assert fb.stop_hz == 1047.0

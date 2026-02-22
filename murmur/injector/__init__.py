@@ -5,7 +5,9 @@ from __future__ import annotations
 import sys
 
 from murmur.config import InjectorConfig
-from murmur.injector.base import TextInjector
+from murmur.injector.base import InjectStrategy, TextInjector
+
+__all__ = ["InjectStrategy", "TextInjector", "create_injector"]
 
 
 def create_injector(config: InjectorConfig) -> TextInjector:

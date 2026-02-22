@@ -34,7 +34,7 @@ _session_var: contextvars.ContextVar[int] = contextvars.ContextVar(
 )
 
 
-class _SessionFilter(logging.Filter):
+class SessionFilter(logging.Filter):  # pyright: ignore[reportUnusedClass]
     """Injects ``session`` into every LogRecord from any thread."""
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -89,7 +89,7 @@ class DictationApp:
         self.notifier = Notifier(level=config.notify.level)
         self.tray = TrayIcon(
             on_quit=self._request_shutdown,
-            on_activate=self._on_tray_activate,
+            on_activate=self.on_tray_activate,
         )
 
         # Per-binding injectors: tmux bindings get their own TmuxInjector;
@@ -103,10 +103,80 @@ class DictationApp:
             on_deactivate=self._on_deactivate,
         )
         self.transcriber.set_callbacks(
-            on_partial=self._on_partial_transcript,
-            on_final=self._on_final_transcript,
+            on_partial=self.on_partial_transcript,
+            on_final=self.on_final_transcript,
             on_error=self._on_transcriber_error,
         )
+
+    @property
+    def recording_active(self) -> bool:
+        """Whether recording is currently active."""
+        return self._recording_active
+
+    @recording_active.setter
+    def recording_active(self, value: bool) -> None:
+        """Set whether recording is currently active."""
+        self._recording_active = value
+
+    @property
+    def clipboard_mode(self) -> bool:
+        """Whether clipboard mode is currently active."""
+        return self._clipboard_mode
+
+    @clipboard_mode.setter
+    def clipboard_mode(self, value: bool) -> None:
+        """Set whether clipboard mode is currently active."""
+        self._clipboard_mode = value
+
+    @property
+    def active_injector(self) -> TextInjector:
+        """The currently active text injector."""
+        return self._active_injector
+
+    @active_injector.setter
+    def active_injector(self, value: TextInjector) -> None:
+        """Set the currently active text injector."""
+        self._active_injector = value
+
+    @property
+    def active_binding(self) -> HotkeyBinding | None:
+        """The currently active hotkey binding."""
+        return self._active_binding
+
+    @active_binding.setter
+    def active_binding(self, value: HotkeyBinding | None) -> None:
+        """Set the currently active hotkey binding."""
+        self._active_binding = value
+
+    @property
+    def config_mtime(self) -> float:
+        """The modification time of the config file."""
+        return self._config_mtime
+
+    @config_mtime.setter
+    def config_mtime(self, value: float) -> None:
+        """Set the modification time of the config file."""
+        self._config_mtime = value
+
+    @property
+    def last_partial(self) -> str:
+        """The last partial transcript received."""
+        return self._last_partial
+
+    @last_partial.setter
+    def last_partial(self, value: str) -> None:
+        """Set the last partial transcript received."""
+        self._last_partial = value
+
+    @property
+    def clipboard_buffer(self) -> list[str]:
+        """The buffered text in clipboard mode."""
+        return self._clipboard_buffer
+
+    @clipboard_buffer.setter
+    def clipboard_buffer(self, value: list[str]) -> None:
+        """Set the buffered text in clipboard mode."""
+        self._clipboard_buffer = value
 
     def _build_binding_injectors(self) -> dict[int, TextInjector]:
         """Build a per-binding injector map.
@@ -128,7 +198,7 @@ class DictationApp:
                 injectors[id(binding)] = self.injector
         return injectors
 
-    def _maybe_reload_config(self) -> None:
+    def maybe_reload_config(self) -> None:
         """Reload config from disk if the file has been modified since last check."""
         try:
             mtime = CONFIG_FILE.stat().st_mtime
@@ -163,7 +233,7 @@ class DictationApp:
         "copy_to_clipboard" and determines what happens to the transcript.
         ``trigger`` is "hotkey" or "tray" and indicates what triggered recording.
         """
-        self._maybe_reload_config()
+        self.maybe_reload_config()
 
         action = binding.action
         if action == "toggle":
@@ -212,9 +282,9 @@ class DictationApp:
         self.notifier.info("Recording stopped")
         self.tray.set_state("idle")
         self._last_partial = ""
-        threading.Thread(target=self._stop_and_deliver, daemon=True).start()
+        threading.Thread(target=self.stop_and_deliver, daemon=True).start()
 
-    def _stop_and_deliver(self) -> None:
+    def stop_and_deliver(self) -> None:
         """Stop the transcriber, then deliver clipboard if in clipboard mode.
 
         Runs in a background thread.  Calling transcriber.stop() joins the
@@ -246,7 +316,7 @@ class DictationApp:
         else:
             logger.info("Clipboard mode: no text to copy")
 
-    def _on_partial_transcript(self, text: str) -> None:
+    def on_partial_transcript(self, text: str) -> None:
         """Called with intermediate (partial) transcript text.
 
         Skipped entirely when inject_partials=False (default) or in
@@ -288,7 +358,7 @@ class DictationApp:
                 self._active_injector.inject_raw(text)
             self._last_partial = text
 
-    def _on_final_transcript(self, text: str) -> None:
+    def on_final_transcript(self, text: str) -> None:
         """Called with finalized turn text.
 
         In copy_to_clipboard mode: copies the transcript to the system
@@ -420,7 +490,7 @@ class DictationApp:
 
         self.shutdown()
 
-    def _on_tray_activate(self) -> None:
+    def on_tray_activate(self) -> None:
         """Handle tray icon left-click: toggle recording on/off."""
         with self._lock:
             active = self._recording_active

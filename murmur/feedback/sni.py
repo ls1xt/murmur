@@ -1,10 +1,7 @@
-# pyright: reportUnknownMemberType=false
-# pyright: reportUnknownVariableType=false
-# pyright: reportUnknownArgumentType=false
 """StatusNotifierItem (SNI) tray backend via Gio.DBus for Sway/waybar.
 
-gi.repository (GLib, Gio) has no type stubs -- pyright Unknown-member
-diagnostics are suppressed at file level above.
+gi.repository (GLib, Gio) has no type stubs -- per-line pyright ignores
+are used on the specific lines that access untyped Gio/GLib attributes.
 """
 
 from __future__ import annotations
@@ -21,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 from murmur.feedback._tray_common import (
     ICON_SIZE,
-    _STATE_TITLES,
+    TrayState,
+    STATE_TITLES,
     create_icon_image as _create_icon_image,
 )
 
@@ -73,7 +71,7 @@ class SniTray:
     ) -> None:
         self._on_quit = on_quit
         self._on_activate = on_activate
-        self._state = "idle"
+        self._state: TrayState = "idle"
         self._conn: Any = None
         self._owner_id: int = 0
         self._reg_id: int = 0
@@ -82,16 +80,25 @@ class SniTray:
         self._bus_name: str = ""
         self._node_info: Any = None
 
+    @property
+    def state(self) -> TrayState:
+        """Current tray state."""
+        return self._state
+
+    @state.setter
+    def state(self, value: TrayState) -> None:
+        """Set the tray state."""
+        self._state = value
+
     def start(self) -> None:
         """Register SNI object on the session D-Bus and start GLib loop."""
-        from gi.repository import Gio, GLib  # type: ignore[import-untyped]
+        from gi.repository import Gio, GLib  # type: ignore[reportMissingImports]
+        self._node_info = Gio.DBusNodeInfo.new_for_xml(_SNI_XML)  # pyright: ignore[reportUnknownMemberType]
+        iface_info: Any = self._node_info.interfaces[0]  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
-        self._node_info = Gio.DBusNodeInfo.new_for_xml(_SNI_XML)
-        iface_info: Any = self._node_info.interfaces[0]
+        self._conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)  # pyright: ignore[reportUnknownMemberType]
 
-        self._conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-
-        self._reg_id = self._conn.register_object(
+        self._reg_id = self._conn.register_object(  # pyright: ignore[reportUnknownMemberType]
             "/StatusNotifierItem",
             iface_info,
             self._handle_method_call,
@@ -100,18 +107,18 @@ class SniTray:
         )
 
         self._bus_name = f"org.kde.StatusNotifierItem-{os.getpid()}-1"
-        self._owner_id = Gio.bus_own_name(
-            Gio.BusType.SESSION,
+        self._owner_id = Gio.bus_own_name(  # pyright: ignore[reportUnknownMemberType]
+            Gio.BusType.SESSION,  # pyright: ignore[reportUnknownMemberType]
             self._bus_name,
-            Gio.BusNameOwnerFlags.NONE,
+            Gio.BusNameOwnerFlags.NONE,  # pyright: ignore[reportUnknownMemberType]
             None,
             self._on_name_acquired,
             None,
         )
 
-        self._loop = GLib.MainLoop()
-        loop_run: Any = self._loop.run
-        self._loop_thread = threading.Thread(target=loop_run, daemon=True)
+        self._loop = GLib.MainLoop()  # pyright: ignore[reportUnknownMemberType]
+        loop_run: Any = self._loop.run  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        self._loop_thread = threading.Thread(target=loop_run, daemon=True)  # pyright: ignore[reportUnknownArgumentType]
         self._loop_thread.start()
         logger.info("SNI tray started (bus=%s)", self._bus_name)
 
@@ -122,15 +129,14 @@ class SniTray:
         *args: Any,
     ) -> None:
         """Called when the bus name is acquired. Register with watcher."""
-        from gi.repository import GLib  # type: ignore[import-untyped]
-
+        from gi.repository import GLib  # type: ignore[reportMissingImports]
         try:
             conn.call_sync(
                 "org.kde.StatusNotifierWatcher",
                 "/StatusNotifierWatcher",
                 "org.kde.StatusNotifierWatcher",
                 "RegisterStatusNotifierItem",
-                GLib.Variant("(s)", (str(name),)),
+                GLib.Variant("(s)", (str(name),)),  # pyright: ignore[reportUnknownMemberType]
                 None,
                 0,
                 -1,
@@ -170,42 +176,40 @@ class SniTray:
         prop_name: Any,
     ) -> Any:
         """Handle D-Bus property reads."""
-        from gi.repository import GLib  # type: ignore[import-untyped]
-
-        _v: Any = GLib.Variant
+        from gi.repository import GLib  # type: ignore[reportMissingImports]
+        _v: Any = GLib.Variant  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
         name: str = str(prop_name)
         if name == "Category":
-            return _v("s", "ApplicationStatus")
+            return _v("s", "ApplicationStatus")  # pyright: ignore[reportUnknownVariableType]
         if name == "Id":
-            return _v("s", "murmur")
+            return _v("s", "murmur")  # pyright: ignore[reportUnknownVariableType]
         if name == "Status":
-            return _v("s", "Active")
+            return _v("s", "Active")  # pyright: ignore[reportUnknownVariableType]
         if name == "Title":
-            title = _STATE_TITLES.get(self._state, "Idle")
-            return _v("s", f"Murmur - {title}")
+            title = STATE_TITLES.get(self._state, "Idle")
+            return _v("s", f"Murmur - {title}")  # pyright: ignore[reportUnknownVariableType]
         if name == "IconName":
-            return _v("s", "")
+            return _v("s", "")  # pyright: ignore[reportUnknownVariableType]
         if name == "IconPixmap":
             try:
                 img = _create_icon_image(self._state)
                 pixmap_bytes = _rgba_to_argb32(img)
-                return _v(
+                return _v(  # pyright: ignore[reportUnknownVariableType]
                     "a(iiay)",
                     [(ICON_SIZE, ICON_SIZE, pixmap_bytes)],
                 )
             except ImportError:
-                return _v("a(iiay)", [])
+                return _v("a(iiay)", [])  # pyright: ignore[reportUnknownVariableType]
         if name == "ItemIsMenu":
-            return _v("b", False)
+            return _v("b", False)  # pyright: ignore[reportUnknownVariableType]
         return None
 
-    def set_state(self, state: str, reason: str = "") -> None:
+    def set_state(self, state: TrayState, reason: str = "") -> None:
         """Update the SNI state. Thread-safe via GLib.idle_add."""
         self._state = state
         try:
-            from gi.repository import GLib  # type: ignore[import-untyped]
-
-            GLib.idle_add(self._emit_new_icon)
+            from gi.repository import GLib  # type: ignore[reportMissingImports]
+            GLib.idle_add(self._emit_new_icon)  # pyright: ignore[reportUnknownMemberType]
         except ImportError:
             pass
 
@@ -226,15 +230,14 @@ class SniTray:
 
     def stop(self) -> None:
         """Stop the SNI tray: unregister, unown, quit loop."""
-        from gi.repository import Gio  # type: ignore[import-untyped]
-
+        from gi.repository import Gio  # type: ignore[reportMissingImports]
         if self._conn is not None and self._reg_id:
             with contextlib.suppress(Exception):
                 self._conn.unregister_object(self._reg_id)
             self._reg_id = 0
 
         if self._owner_id:
-            Gio.bus_unown_name(self._owner_id)
+            Gio.bus_unown_name(self._owner_id)  # pyright: ignore[reportUnknownMemberType]
             self._owner_id = 0
 
         if self._loop is not None:

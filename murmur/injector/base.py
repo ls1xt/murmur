@@ -1,6 +1,9 @@
 """Abstract base class for text injectors."""
 
 from abc import ABC, abstractmethod
+from typing import Literal
+
+InjectStrategy = Literal["clipboard", "clipboard-fallback", "ydotool"]
 
 
 class TextInjector(ABC):

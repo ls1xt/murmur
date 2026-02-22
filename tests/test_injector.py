@@ -225,8 +225,8 @@ class TestClipboardStrategy:
         mock_fatal = mocker.patch("murmur.errors.fatal")
 
         injector = YdotoolInjector(inject_strategy="clipboard")
-        injector._wl_copy_path = None
-        injector._resolved_path = "/usr/bin/ydotool"
+        injector.wl_copy_path = None
+        injector.resolved_path = "/usr/bin/ydotool"
         injector.inject("test")
 
         mock_fatal.assert_called_once()
@@ -323,39 +323,39 @@ class TestSanitizeText:
     """Test _sanitize_text strips control characters."""
 
     def test_clean_text_unchanged(self) -> None:
-        from murmur.injector.ydotool import _sanitize_text
+        from murmur.injector.ydotool import sanitize_text
 
-        assert _sanitize_text("Hello, world!") == "Hello, world!"
+        assert sanitize_text("Hello, world!") == "Hello, world!"
 
     def test_newline_stripped(self) -> None:
-        from murmur.injector.ydotool import _sanitize_text
+        from murmur.injector.ydotool import sanitize_text
 
-        assert _sanitize_text("hello\nworld") == "helloworld"
+        assert sanitize_text("hello\nworld") == "helloworld"
 
     def test_carriage_return_stripped(self) -> None:
-        from murmur.injector.ydotool import _sanitize_text
+        from murmur.injector.ydotool import sanitize_text
 
-        assert _sanitize_text("hello\r\nworld") == "helloworld"
+        assert sanitize_text("hello\r\nworld") == "helloworld"
 
     def test_tab_stripped(self) -> None:
-        from murmur.injector.ydotool import _sanitize_text
+        from murmur.injector.ydotool import sanitize_text
 
-        assert _sanitize_text("hello\tworld") == "helloworld"
+        assert sanitize_text("hello\tworld") == "helloworld"
 
     def test_null_byte_stripped(self) -> None:
-        from murmur.injector.ydotool import _sanitize_text
+        from murmur.injector.ydotool import sanitize_text
 
-        assert _sanitize_text("hel\x00lo") == "hello"
+        assert sanitize_text("hel\x00lo") == "hello"
 
     def test_spaces_preserved(self) -> None:
-        from murmur.injector.ydotool import _sanitize_text
+        from murmur.injector.ydotool import sanitize_text
 
-        assert _sanitize_text("hello world") == "hello world"
+        assert sanitize_text("hello world") == "hello world"
 
     def test_unicode_letters_preserved(self) -> None:
-        from murmur.injector.ydotool import _sanitize_text
+        from murmur.injector.ydotool import sanitize_text
 
-        assert _sanitize_text("café résumé") == "café résumé"
+        assert sanitize_text("café résumé") == "café résumé"
 
     def test_inject_strips_control_chars(self, mocker: Any) -> None:
         mock_run = mocker.patch("murmur.injector.ydotool.subprocess.run")
@@ -425,7 +425,7 @@ class TestInjectorFactory:
     def test_unknown_backend_raises(self) -> None:
         from murmur.injector import create_injector
 
-        config = InjectorConfig(backend="nonexistent")
+        config = InjectorConfig(backend="nonexistent")  # type: ignore[arg-type]
         with pytest.raises(ValueError, match="Unknown injector backend"):
             create_injector(config)
 
@@ -444,4 +444,4 @@ class TestInjectorFactory:
         config = InjectorConfig(backend="ydotool", inject_strategy="clipboard")
         injector = create_injector(config)
         assert isinstance(injector, YdotoolInjector)
-        assert injector._inject_strategy == "clipboard"
+        assert injector.inject_strategy == "clipboard"

@@ -4,6 +4,8 @@ import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
+TranscriptionCallback = Callable[[str], None]
+
 
 class Transcriber(ABC):
     """Base class for streaming speech-to-text backends."""
@@ -11,9 +13,9 @@ class Transcriber(ABC):
     def __init__(self) -> None:
         self._streaming_lock = threading.Lock()
         self._streaming: bool = False
-        self._on_partial: Callable[[str], None] | None = None
-        self._on_final: Callable[[str], None] | None = None
-        self._on_error: Callable[[Exception], None] | None = None
+        self.on_partial: TranscriptionCallback | None = None
+        self.on_final: TranscriptionCallback | None = None
+        self.on_error: Callable[[Exception], None] | None = None
 
     @property
     def _is_streaming(self) -> bool:
@@ -27,14 +29,14 @@ class Transcriber(ABC):
 
     def set_callbacks(
         self,
-        on_partial: Callable[[str], None],
-        on_final: Callable[[str], None],
+        on_partial: TranscriptionCallback,
+        on_final: TranscriptionCallback,
         on_error: Callable[[Exception], None],
     ) -> None:
         """Register transcript event callbacks."""
-        self._on_partial = on_partial
-        self._on_final = on_final
-        self._on_error = on_error
+        self.on_partial = on_partial
+        self.on_final = on_final
+        self.on_error = on_error
 
     @property
     def is_streaming(self) -> bool:

@@ -14,7 +14,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from murmur.config import DictationConfig, FeedbackConfig, HotkeyBinding, TrayConfig
-from murmur.main import DictationApp, main
+from murmur.app import DictationApp
+from murmur.main import main
 
 
 def _make_app(mocker: Any) -> tuple[DictationApp, MagicMock, MagicMock, MagicMock]:
@@ -186,7 +187,7 @@ class TestDictationAppLifecycle:
     def test_activate_starts_transcription(self, mocker: Any) -> None:
         app, transcriber, _, _ = _make_app(mocker)
 
-        app._on_activate(HotkeyBinding(action="push_to_talk"))
+        app.on_activate(HotkeyBinding(action="push_to_talk"))
 
         time.sleep(0.05)
         transcriber.start.assert_called_once()
@@ -194,9 +195,9 @@ class TestDictationAppLifecycle:
     def test_deactivate_stops_transcription(self, mocker: Any) -> None:
         app, transcriber, _, _ = _make_app(mocker)
 
-        app._recording_active = True
+        app.recording_active = True
         transcriber.is_streaming = True
-        app._on_deactivate()
+        app.on_deactivate()  # private callback, keep as-is
 
         time.sleep(0.05)
         transcriber.stop.assert_called_once()
@@ -205,8 +206,8 @@ class TestDictationAppLifecycle:
         app, transcriber, _, _ = _make_app(mocker)
 
         # Simulate recording already active
-        app._recording_active = True
-        app._on_activate(HotkeyBinding(action="push_to_talk"))
+        app.recording_active = True
+        app.on_activate(HotkeyBinding(action="push_to_talk"))
 
         time.sleep(0.05)
         transcriber.start.assert_not_called()
@@ -215,7 +216,7 @@ class TestDictationAppLifecycle:
         app, transcriber, _, _ = _make_app(mocker)
 
         # _recording_active starts False
-        app._on_deactivate()
+        app.on_deactivate()
 
         time.sleep(0.05)
         transcriber.stop.assert_not_called()
@@ -223,39 +224,39 @@ class TestDictationAppLifecycle:
     def test_final_transcript_injects_text(self, mocker: Any) -> None:
         app, _, injector, _ = _make_app(mocker)
 
-        app._on_final_transcript("Hello world.")
+        app.on_final_transcript("Hello world.")
 
         injector.inject.assert_called_once_with("Hello world.")
 
     def test_final_transcript_backspaces_partial_first(self, mocker: Any) -> None:
         app, _, injector, _ = _make_app(mocker)
 
-        app._last_partial = "Hello"
-        app._on_final_transcript("Hello world.")
+        app.last_partial = "Hello"
+        app.on_final_transcript("Hello world.")
 
         injector.inject_backspaces.assert_called_once_with(5)
         injector.inject.assert_called_once_with("Hello world.")
-        assert app._last_partial == ""
+        assert app.last_partial == ""
 
     def test_blank_transcript_not_injected(self, mocker: Any) -> None:
         app, _, injector, _ = _make_app(mocker)
 
-        app._on_final_transcript("   ")
+        app.on_final_transcript("   ")
 
         injector.inject.assert_not_called()
 
     def test_partial_transcript_inject_raw(self, mocker: Any) -> None:
         app, _, injector, _ = _make_app(mocker)
 
-        app._on_partial_transcript("Hello")
+        app.on_partial_transcript("Hello")
         injector.inject_raw.assert_called_once_with("Hello")
-        assert app._last_partial == "Hello"
+        assert app.last_partial == "Hello"
 
     def test_partial_transcript_delta_suffix(self, mocker: Any) -> None:
         app, _, injector, _ = _make_app(mocker)
 
-        app._on_partial_transcript("Hello")
-        app._on_partial_transcript("Hello world")
+        app.on_partial_transcript("Hello")
+        app.on_partial_transcript("Hello world")
 
         assert injector.inject_raw.call_count == 2
         assert injector.inject_raw.call_args_list[1][0][0] == " world"
@@ -263,17 +264,17 @@ class TestDictationAppLifecycle:
     def test_partial_transcript_diverged(self, mocker: Any) -> None:
         app, _, injector, _ = _make_app(mocker)
 
-        app._on_partial_transcript("Hello")
+        app.on_partial_transcript("Hello")
         injector.inject_raw.reset_mock()
 
-        app._on_partial_transcript("Hey there")
+        app.on_partial_transcript("Hey there")
         injector.inject_backspaces.assert_called_once_with(5)
         injector.inject_raw.assert_called_once_with("Hey there")
 
     def test_partial_empty_is_noop(self, mocker: Any) -> None:
         app, _, injector, _ = _make_app(mocker)
 
-        app._on_partial_transcript("")
+        app.on_partial_transcript("")
         injector.inject_raw.assert_not_called()
 
     def test_sequential_recordings(self, mocker: Any) -> None:
@@ -281,12 +282,12 @@ class TestDictationAppLifecycle:
         app, transcriber, _, _ = _make_app(mocker)
 
         for _ in range(3):
-            app._recording_active = False
-            app._on_activate(HotkeyBinding(action="push_to_talk"))
+            app.recording_active = False
+            app.on_activate(HotkeyBinding(action="push_to_talk"))
             time.sleep(0.05)
 
-            app._recording_active = True
-            app._on_deactivate()
+            app.recording_active = True
+            app.on_deactivate()
             time.sleep(0.05)
 
             transcriber.is_streaming = False
@@ -298,7 +299,7 @@ class TestDictationAppLifecycle:
         app, _, _, _ = _make_app(mocker)
         mock_set_state = mocker.patch.object(app.tray, "set_state")
 
-        app._on_transcriber_error(RuntimeError("boom"))
+        app.on_transcriber_error(RuntimeError("boom"))
 
         mock_set_state.assert_called_once_with("error", reason="boom")
 
@@ -318,22 +319,22 @@ class TestClipboardMode:
     def test_activate_clipboard_sets_flag(self, mocker: Any) -> None:
         app, _, _, _ = _make_app(mocker)
 
-        app._on_activate(HotkeyBinding(action="copy_to_clipboard"))
-        assert app._clipboard_mode is True
+        app.on_activate(HotkeyBinding(action="copy_to_clipboard"))
+        assert app.clipboard_mode is True
 
     def test_activate_push_to_talk_clears_flag(self, mocker: Any) -> None:
         app, _, _, _ = _make_app(mocker)
 
-        app._clipboard_mode = True
-        app._recording_active = False
-        app._on_activate(HotkeyBinding(action="push_to_talk"))
-        assert app._clipboard_mode is False
+        app.clipboard_mode = True
+        app.recording_active = False
+        app.on_activate(HotkeyBinding(action="push_to_talk"))
+        assert app.clipboard_mode is False
 
     def test_partial_skipped_in_clipboard_mode(self, mocker: Any) -> None:
         app, _, injector, _ = _make_app(mocker)
 
-        app._clipboard_mode = True
-        app._on_partial_transcript("Hello world")
+        app.clipboard_mode = True
+        app.on_partial_transcript("Hello world")
 
         injector.inject_raw.assert_not_called()
         injector.inject_backspaces.assert_not_called()
@@ -342,31 +343,31 @@ class TestClipboardMode:
         """In clipboard mode, _on_final_transcript buffers text, not injects."""
         app, _, injector, _ = _make_app(mocker)
 
-        app._clipboard_mode = True
-        app._on_final_transcript("Hello world.")
+        app.clipboard_mode = True
+        app.on_final_transcript("Hello world.")
 
         # Text is buffered, not injected or copied to clipboard directly
-        assert "Hello world." in app._clipboard_buffer
+        assert "Hello world." in app.clipboard_buffer
         injector.inject.assert_not_called()
         injector.copy_to_clipboard.assert_not_called()
 
     def test_final_blank_in_clipboard_mode_skips_buffer(self, mocker: Any) -> None:
         app, _, injector, _ = _make_app(mocker)
 
-        app._clipboard_mode = True
-        app._on_final_transcript("   ")
+        app.clipboard_mode = True
+        app.on_final_transcript("   ")
 
-        assert len(app._clipboard_buffer) == 0
+        assert len(app.clipboard_buffer) == 0
         injector.copy_to_clipboard.assert_not_called()
 
     def test_tray_activate_uses_push_to_talk(self, mocker: Any) -> None:
         """Tray left-click always uses push_to_talk, not clipboard mode."""
-        app, transcriber, _, _ = _make_app(mocker)
+        app, _transcriber, _, _ = _make_app(mocker)
 
-        app._recording_active = False
-        app._on_tray_activate()
+        app.recording_active = False
+        app.on_tray_activate()
 
-        assert app._clipboard_mode is False
+        assert app.clipboard_mode is False
 
 
 class TestAppendEnter:
@@ -377,17 +378,17 @@ class TestAppendEnter:
         app, transcriber, injector, _ = _make_app(mocker)
 
         binding = HotkeyBinding(action="push_to_talk", append_enter=True)
-        app._on_activate(binding)
+        app.on_activate(binding)
         time.sleep(0.05)
 
         # Manually set active binding state as activate would have done
-        app._active_binding = binding
-        app._active_injector = injector
+        app.active_binding = binding
+        app.active_injector = injector
 
         # Simulate stop and deliver
-        app._clipboard_mode = False
+        app.clipboard_mode = False
         transcriber.stop.return_value = None
-        app._stop_and_deliver()
+        app.stop_and_deliver()
 
         injector.inject_return.assert_called_once()
 
@@ -396,11 +397,11 @@ class TestAppendEnter:
         app, transcriber, injector, _ = _make_app(mocker)
 
         binding = HotkeyBinding(action="push_to_talk", append_enter=False)
-        app._active_binding = binding
-        app._active_injector = injector
-        app._clipboard_mode = False
+        app.active_binding = binding
+        app.active_injector = injector
+        app.clipboard_mode = False
         transcriber.stop.return_value = None
-        app._stop_and_deliver()
+        app.stop_and_deliver()
 
         injector.inject_return.assert_not_called()
 
@@ -414,11 +415,11 @@ class TestConfigReload:
 
         # stat returns same mtime — no reload expected
         mock_stat = MagicMock()
-        mock_stat.st_mtime = app._config_mtime
+        mock_stat.st_mtime = app.config_mtime
         mocker.patch("pathlib.Path.stat", return_value=mock_stat)
 
         mock_load = mocker.patch.object(DictationConfig, "load")
-        app._maybe_reload_config()
+        app.maybe_reload_config()
 
         mock_load.assert_not_called()
 
@@ -428,7 +429,7 @@ class TestConfigReload:
 
         mocker.patch("pathlib.Path.stat", side_effect=OSError("no file"))
         mock_load = mocker.patch.object(DictationConfig, "load")
-        app._maybe_reload_config()
+        app.maybe_reload_config()
 
         mock_load.assert_not_called()
 
@@ -440,11 +441,11 @@ class TestConfigReload:
 
         # Simulate mtime change
         mock_stat = MagicMock()
-        mock_stat.st_mtime = app._config_mtime + 1.0
+        mock_stat.st_mtime = app.config_mtime + 1.0
         mocker.patch("pathlib.Path.stat", return_value=mock_stat)
         mocker.patch.object(DictationConfig, "load", side_effect=ValueError("bad json"))
 
         mock_logger = mocker.patch("murmur.app.logger")
-        app._maybe_reload_config()
+        app.maybe_reload_config()
 
         mock_logger.warning.assert_called_once()

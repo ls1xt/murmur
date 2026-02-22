@@ -18,12 +18,12 @@ import subprocess
 import time
 import unicodedata
 
-from murmur.injector.base import TextInjector
+from murmur.injector.base import InjectStrategy, TextInjector
 
 logger = logging.getLogger(__name__)
 
 
-def _sanitize_text(text: str) -> str:
+def sanitize_text(text: str) -> str:
     """Strip control characters before injection.
 
     Control characters (newline, carriage return, tab, NUL, …) can cause
@@ -46,18 +46,43 @@ class YdotoolInjector(TextInjector):
         ydotool_path: str = "ydotool",
         key_delay: int = 0,
         trailing_space: bool = True,
-        inject_strategy: str = "clipboard-fallback",
+        inject_strategy: InjectStrategy = "clipboard-fallback",
     ) -> None:
         self._ydotool_path = ydotool_path
         self._key_delay = key_delay
         self._trailing_space = trailing_space
-        self._inject_strategy = inject_strategy
+        self._inject_strategy: InjectStrategy = inject_strategy
         self._resolved_path: str | None = shutil.which(self._ydotool_path)
         self._wl_copy_path: str | None = shutil.which("wl-copy")
         self._wl_copy_proc: subprocess.Popen[bytes] | None = None
 
         if not self._resolved_path:
             logger.warning("ydotool not found in PATH")
+
+    @property
+    def inject_strategy(self) -> InjectStrategy:
+        """Return the configured injection strategy."""
+        return self._inject_strategy
+
+    @property
+    def resolved_path(self) -> str | None:
+        """Return the resolved path to ydotool, or None if not found."""
+        return self._resolved_path
+
+    @resolved_path.setter
+    def resolved_path(self, value: str | None) -> None:
+        """Set the resolved path to ydotool."""
+        self._resolved_path = value
+
+    @property
+    def wl_copy_path(self) -> str | None:
+        """Return the resolved path to wl-copy, or None if not found."""
+        return self._wl_copy_path
+
+    @wl_copy_path.setter
+    def wl_copy_path(self, value: str | None) -> None:
+        """Set the resolved path to wl-copy."""
+        self._wl_copy_path = value
 
     def is_available(self) -> bool:
         """Check if ydotool is installed and the daemon is running."""
@@ -99,7 +124,7 @@ class YdotoolInjector(TextInjector):
         if not text:
             return
 
-        text = _sanitize_text(text)
+        text = sanitize_text(text)
         if not text:
             return
 
@@ -128,7 +153,7 @@ class YdotoolInjector(TextInjector):
         if not text:
             return
 
-        text = _sanitize_text(text)
+        text = sanitize_text(text)
         if not text:
             return
 

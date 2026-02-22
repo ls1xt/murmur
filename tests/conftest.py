@@ -158,7 +158,7 @@ def virtual_mic_device(
 
     Skips the test session if no suitable virtual device is found.
     """
-    import sounddevice as sd  # type: ignore[import-untyped]
+    import sounddevice as sd
 
     _ = request  # session-scoped fixture; request unused but required by pytest API
     devices = sd.query_devices()  # type: ignore[no-untyped-call]

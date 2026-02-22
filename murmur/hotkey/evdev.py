@@ -16,10 +16,10 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypedDict
 
-import evdev  # type: ignore[import-untyped]
-from evdev import UInput, categorize, ecodes  # type: ignore[import-untyped]
+import evdev
+from evdev import UInput, categorize, ecodes
 
 from murmur.config import HotkeyBinding
 from murmur.errors import fatal_from_thread
@@ -28,9 +28,9 @@ from murmur.hotkey.base import HotkeyListener
 logger = logging.getLogger(__name__)
 
 # Typed wrappers for evdev constants (untyped library).
-_EV_KEY: int = ecodes.EV_KEY  # type: ignore[reportUnknownMemberType]
-_KEY_A: int = ecodes.KEY_A  # type: ignore[reportUnknownMemberType]
-_KEY_Z: int = ecodes.KEY_Z  # type: ignore[reportUnknownMemberType]
+EV_KEY: int = ecodes.EV_KEY  # type: ignore[reportUnknownMemberType]
+KEY_A: int = ecodes.KEY_A  # type: ignore[reportUnknownMemberType]
+KEY_Z: int = ecodes.KEY_Z  # type: ignore[reportUnknownMemberType]
 _ecodes_dict: dict[str, int] = ecodes.ecodes  # type: ignore[reportUnknownMemberType]
 _key_names: dict[int, str] = ecodes.KEY  # type: ignore[reportUnknownMemberType]
 
@@ -77,9 +77,9 @@ def find_keyboard_devices() -> list[str]:
             caps: dict[int, list[int]] = dev.capabilities(  # type: ignore[reportUnknownMemberType]
                 verbose=False
             )
-            if _EV_KEY in caps:
-                key_caps: list[int] = caps[_EV_KEY]
-                if _KEY_A in key_caps and _KEY_Z in key_caps:
+            if EV_KEY in caps:
+                key_caps: list[int] = caps[EV_KEY]
+                if KEY_A in key_caps and KEY_Z in key_caps:
                     keyboards.append(path_str)
                     dev_name: str = str(dev.name)  # type: ignore[reportUnknownMemberType]
                     logger.debug("Found keyboard: %s (%s)", dev_name, path_str)
@@ -97,6 +97,17 @@ class _ResolvedBinding:
     trigger_code: int
     action: str
     binding: HotkeyBinding = field(default_factory=HotkeyBinding)
+
+
+class _PendingRelease(TypedDict):
+    timestamp: float
+    binding: _ResolvedBinding
+    uinput: Any  # evdev.UInput — untyped library
+
+
+class _DeviceEntry(TypedDict):
+    device: Any  # evdev.InputDevice
+    uinput: Any  # evdev.UInput
 
 
 class EvdevHotkeyListener(HotkeyListener):
@@ -145,19 +156,58 @@ class EvdevHotkeyListener(HotkeyListener):
             self._all_modifier_codes.update(mod_codes)
 
         self._device_path = device_path
-        self._devices: list[tuple[Any, Any]] = []  # (physical_dev, uinput)
+        self._devices: list[_DeviceEntry] = []
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._held_keys: set[int] = set()
         self._suppressed_triggers: set[int] = set()
 
-        # Debounce state: maps trigger code -> (release_timestamp, binding, uinput)
+        # Debounce state: maps trigger code -> _PendingRelease
         # When a debounced action's trigger key goes up, we don't dispatch the
         # release immediately -- instead we wait push_to_talk_debounce_ms before
         # dispatching.  If the key goes down again within that window (spurious
         # event), we cancel the pending release.
         self._push_to_talk_debounce_sec: float = push_to_talk_debounce_ms / 1000.0
-        self._pending_releases: dict[int, tuple[float, _ResolvedBinding, Any]] = {}
+        self._pending_releases: dict[int, _PendingRelease] = {}
+
+    @property
+    def held_keys(self) -> set[int]:
+        """Keys currently held down."""
+        return self._held_keys
+
+    @property
+    def suppressed_triggers(self) -> set[int]:
+        """Trigger codes currently suppressed."""
+        return self._suppressed_triggers
+
+    @property
+    def pending_releases(self) -> dict[int, _PendingRelease]:
+        """Debounced releases pending dispatch."""
+        return self._pending_releases
+
+    @property
+    def ecodes_dict(self) -> dict[str, int]:
+        """Evdev ecodes dictionary mapping names to codes."""
+        return _ecodes_dict
+
+    @property
+    def stop_event(self) -> threading.Event:
+        """Event signaling listener to stop."""
+        return self._stop_event
+
+    @property
+    def devices(self) -> list[_DeviceEntry]:
+        """Currently grabbed devices."""
+        return self._devices
+
+    @devices.setter
+    def devices(self, value: list[_DeviceEntry]) -> None:
+        """Set the list of currently grabbed devices."""
+        self._devices = value
+
+    def listen_loop(self) -> None:
+        """Main event loop -- runs in a background thread."""
+        return self._listen_loop()
 
     def start(self) -> None:
         """Start listening in a background thread with grab-and-forward."""
@@ -181,7 +231,7 @@ class EvdevHotkeyListener(HotkeyListener):
                 dev: Any = _open_device(path)
                 dev.grab()  # type: ignore[reportUnknownMemberType]
                 uinput: Any = UInput.from_device(dev, name=f"murmur-{dev.name}")  # type: ignore[reportUnknownMemberType]
-                self._devices.append((dev, uinput))
+                self._devices.append({"device": dev, "uinput": uinput})
                 dev_name: str = str(dev.name)  # type: ignore[reportUnknownMemberType]
                 logger.info("Grabbed and forwarding: %s (%s)", dev_name, path)
             except (PermissionError, OSError) as e:
@@ -213,29 +263,29 @@ class EvdevHotkeyListener(HotkeyListener):
         from selectors import EVENT_READ, DefaultSelector
 
         selector = DefaultSelector()
-        for dev, _uinput in self._devices:
-            selector.register(dev, EVENT_READ)
+        for entry in self._devices:
+            selector.register(entry["device"], EVENT_READ)
 
         try:
             while not self._stop_event.is_set():
                 events = selector.select(timeout=0.1)
 
                 # Fire any debounced releases whose window has expired.
-                self._check_pending_releases()
+                self.check_pending_releases()
 
                 for key, _ in events:
                     device: Any = key.fileobj
                     # Find the matching uinput for this device
                     uinput: Any = None
-                    for d, u in self._devices:
-                        if d is device:
-                            uinput = u
+                    for entry in self._devices:
+                        if entry["device"] is device:
+                            uinput = entry["uinput"]
                             break
                     try:
                         for event in device.read():  # type: ignore[reportUnknownMemberType]
                             ev_type: int = int(event.type)  # type: ignore[reportUnknownMemberType]
-                            if ev_type == _EV_KEY:
-                                self._handle_key_event(event, uinput)
+                            if ev_type == EV_KEY:
+                                self.handle_key_event(event, uinput)
                             else:
                                 # Forward non-key events unconditionally
                                 if uinput is not None:
@@ -247,7 +297,7 @@ class EvdevHotkeyListener(HotkeyListener):
         finally:
             selector.close()
 
-    def _check_pending_releases(self, now: float | None = None) -> None:
+    def check_pending_releases(self, now: float | None = None) -> None:
         """Fire debounced releases whose window has elapsed.
 
         Called from the listen loop on each iteration.  Can also be called
@@ -256,14 +306,16 @@ class EvdevHotkeyListener(HotkeyListener):
         """
         ts = now if now is not None else time.monotonic()
         expired = [
-            (code, binding, uinput)
-            for code, (t, binding, uinput) in list(self._pending_releases.items())
-            if ts - t >= self._push_to_talk_debounce_sec
+            (code, rel)
+            for code, rel in list(self._pending_releases.items())
+            if ts - rel["timestamp"] >= self._push_to_talk_debounce_sec
         ]
-        for code, binding, uinput in expired:
+        for code, rel in expired:
+            binding = rel["binding"]
+            uinput = rel["uinput"]
             del self._pending_releases[code]
             self._suppressed_triggers.discard(code)
-            self._dispatch_release(binding.binding)
+            self.dispatch_release(binding.binding)
             logger.debug(
                 "Debounce fired: dispatched release for code=%d action=%s",
                 code,
@@ -276,17 +328,17 @@ class EvdevHotkeyListener(HotkeyListener):
                 for mod_code in binding.modifier_codes:
                     if mod_code in self._held_keys:
                         uinput.write(  # type: ignore[reportUnknownMemberType]
-                            _EV_KEY, mod_code, 1
+                            EV_KEY, mod_code, 1
                         )
                     else:
                         # Modifier was released during debounce window but its
                         # key-up was suppressed -- send the explicit release now.
                         uinput.write(  # type: ignore[reportUnknownMemberType]
-                            _EV_KEY, mod_code, 0
+                            EV_KEY, mod_code, 0
                         )
                 uinput.syn()  # type: ignore[reportUnknownMemberType]
 
-    def _handle_key_event(self, event: Any, uinput: Any) -> None:
+    def handle_key_event(self, event: Any, uinput: Any) -> None:
         """Process a single key event with grab-and-forward logic."""
         key_event: Any = categorize(event)  # type: ignore[reportUnknownVariableType]
         code: int = int(event.code)  # type: ignore[reportUnknownArgumentType]
@@ -326,11 +378,11 @@ class EvdevHotkeyListener(HotkeyListener):
                     for mod_code in matched_binding.modifier_codes:
                         if mod_code in self._held_keys:
                             uinput.write(  # type: ignore[reportUnknownMemberType]
-                                _EV_KEY, mod_code, 0
+                                EV_KEY, mod_code, 0
                             )
                     uinput.syn()  # type: ignore[reportUnknownMemberType]
 
-                self._dispatch_action(matched_binding.binding)
+                self.dispatch_action(matched_binding.binding)
             else:
                 # Not a hotkey -- forward the event
                 if uinput is not None:
@@ -352,11 +404,11 @@ class EvdevHotkeyListener(HotkeyListener):
                     if released_binding.action in _DEBOUNCED_ACTIONS:
                         # Schedule a debounced release instead of firing immediately.
                         # Trigger stays in _suppressed_triggers until debounce fires.
-                        self._pending_releases[code] = (
-                            time.monotonic(),
-                            released_binding,
-                            uinput,
-                        )
+                        self._pending_releases[code] = {
+                            "timestamp": time.monotonic(),
+                            "binding": released_binding,
+                            "uinput": uinput,
+                        }
                         logger.debug(
                             "Debouncing release: code=%d action=%s (%.0f ms window)",
                             code,
@@ -366,14 +418,14 @@ class EvdevHotkeyListener(HotkeyListener):
                     else:
                         # Toggle actions: release immediately, no debounce needed.
                         self._suppressed_triggers.discard(code)
-                        self._dispatch_release(released_binding.binding)
+                        self.dispatch_release(released_binding.binding)
 
                         # Restore modifiers: re-press those physically held
                         if uinput is not None:
                             for mod_code in released_binding.modifier_codes:
                                 if mod_code in self._held_keys:
                                     uinput.write(  # type: ignore[reportUnknownMemberType]
-                                        _EV_KEY, mod_code, 1
+                                        EV_KEY, mod_code, 1
                                     )
                             uinput.syn()  # type: ignore[reportUnknownMemberType]
             elif code in self._all_modifier_codes and self._suppressed_triggers:
@@ -409,12 +461,12 @@ class EvdevHotkeyListener(HotkeyListener):
             self._thread.join(timeout=2.0)
             self._thread = None
 
-        for dev, uinput in self._devices:
+        for entry in self._devices:
             with contextlib.suppress(OSError):
-                dev.ungrab()  # type: ignore[reportUnknownMemberType]
+                entry["device"].ungrab()  # type: ignore[reportUnknownMemberType]
             with contextlib.suppress(OSError):
-                uinput.close()  # type: ignore[reportUnknownMemberType]
+                entry["uinput"].close()  # type: ignore[reportUnknownMemberType]
             with contextlib.suppress(OSError):
-                dev.close()  # type: ignore[reportUnknownMemberType]
+                entry["device"].close()  # type: ignore[reportUnknownMemberType]
         self._devices.clear()
         logger.info("evdev hotkey listener stopped")

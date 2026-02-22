@@ -10,12 +10,12 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Final, Literal, cast
 
 logger = logging.getLogger(__name__)
 
-CONFIG_DIR = Path.home() / ".config" / "murmur"
-CONFIG_FILE = CONFIG_DIR / "config.json"
+CONFIG_DIR: Final[Path] = Path.home() / ".config" / "murmur"
+CONFIG_FILE: Final[Path] = CONFIG_DIR / "config.json"
 
 
 @dataclass
@@ -43,7 +43,7 @@ class HotkeyBinding:
         default_factory=lambda: ["KEY_LEFTCTRL", "KEY_LEFTALT"]
     )
     trigger: str = "KEY_SPACE"
-    action: str = "push_to_talk"
+    action: Literal["push_to_talk", "toggle", "copy_to_clipboard"] = "push_to_talk"
     language: str | None = None
     inject_to: str = "default"
     append_enter: bool = False
@@ -87,7 +87,7 @@ class HotkeyConfig:
     """Hotkey detection settings."""
 
     bindings: list[HotkeyBinding] = field(default_factory=_default_bindings)
-    backend: str = "auto"
+    backend: Literal["auto", "evdev", "pynput"] = "auto"
     evdev_device: str | None = None
     push_to_talk_debounce_ms: int = 300
 
@@ -96,7 +96,7 @@ class HotkeyConfig:
 class TranscriberConfig:
     """Speech-to-text engine settings."""
 
-    backend: str = "assemblyai"
+    backend: Literal["assemblyai"] = "assemblyai"
     api_key: str = ""
     sample_rate: int = 16_000
     format_turns: bool = True
@@ -104,8 +104,8 @@ class TranscriberConfig:
     end_of_turn_confidence_threshold: float = 0.4
     min_end_of_turn_silence_when_confident: int = 400
     max_turn_silence: int = 1280
-    keyterms_prompt: list[str] = field(default_factory=list)
-    keyterms: list[str] = field(default_factory=list)
+    keyterms_prompt: list[str] = field(default_factory=list[str])
+    keyterms: list[str] = field(default_factory=list[str])
     inject_partials: bool = False
     reconnect_attempts: int = 5
     reconnect_delay_ms: int = 1000
@@ -116,11 +116,11 @@ class TranscriberConfig:
 class InjectorConfig:
     """Text injection settings."""
 
-    backend: str = "auto"
+    backend: Literal["auto", "pynput", "ydotool", "cgevent", "tmux"] = "auto"
     ydotool_path: str = "ydotool"
     trailing_space: bool = True
     key_delay: int = 1
-    inject_strategy: str = "clipboard"
+    inject_strategy: Literal["clipboard", "clipboard-fallback", "ydotool"] = "clipboard"
 
 
 @dataclass
@@ -140,7 +140,7 @@ class FeedbackConfig:
 class NotifyConfig:
     """Desktop notification settings."""
 
-    level: str = "errors"  # "off", "errors", "verbose"
+    level: Literal["off", "errors", "verbose"] = "errors"
 
 
 @dataclass
@@ -191,7 +191,7 @@ class DictationConfig:
             try:
                 with open(CONFIG_FILE) as f:
                     data: dict[str, Any] = json.load(f)
-                config = cls._from_dict(data)
+                config = cls.from_dict(data)
                 logger.info("Loaded config from %s", CONFIG_FILE)
             except Exception as e:
                 logger.warning("Failed to load config file: %s", e)
@@ -203,16 +203,26 @@ class DictationConfig:
             config.log_level = log_level
 
         if backend := os.environ.get("DICTATION_HOTKEY_BACKEND"):
-            config.hotkey.backend = backend
+            # cast: env var is user-supplied; runtime value must match Literal
+            config.hotkey.backend = cast(
+                Literal["auto", "evdev", "pynput"], backend
+            )
 
         if backend := os.environ.get("DICTATION_INJECTOR_BACKEND"):
-            config.injector.backend = backend
+            # cast: env var is user-supplied; runtime value must match Literal
+            config.injector.backend = cast(
+                Literal["auto", "pynput", "ydotool", "cgevent", "tmux"], backend
+            )
 
         if strategy := os.environ.get("MURMUR_INJECT_STRATEGY"):
-            config.injector.inject_strategy = strategy
+            # cast: env var is user-supplied; runtime value must match Literal
+            config.injector.inject_strategy = cast(
+                Literal["clipboard", "clipboard-fallback", "ydotool"], strategy
+            )
 
         if notify_level := os.environ.get("MURMUR_NOTIFY_LEVEL"):
-            config.notify.level = notify_level
+            # cast: env var is user-supplied; runtime value must match Literal
+            config.notify.level = cast(Literal["off", "errors", "verbose"], notify_level)
 
         if mic_device := os.environ.get("MURMUR_MIC_DEVICE"):
             config.transcriber.mic_device = mic_device
@@ -236,7 +246,7 @@ class DictationConfig:
         return config
 
     @classmethod
-    def _from_dict(cls, data: dict[str, Any]) -> DictationConfig:
+    def from_dict(cls, data: dict[str, Any]) -> DictationConfig:
         """Construct config from a dict (loaded from JSON).
 
         Uses setattr for JSON deserialization -- type safety is enforced
@@ -256,22 +266,28 @@ class DictationConfig:
                     bindings: list[HotkeyBinding] = []
                     for b in bindings_raw:  # type: ignore[reportUnknownVariableType]
                         if isinstance(b, dict):
+                            # cast: b is dict from JSON; keys are strings, values are Any
+                            bd: dict[str, Any] = cast(dict[str, Any], b)
                             binding = HotkeyBinding()
-                            if "modifiers" in b:
-                                binding.modifiers = b["modifiers"]
-                            if "trigger" in b:
-                                binding.trigger = b["trigger"]
-                            if "action" in b:
-                                binding.action = b["action"]
-                            if "language" in b:
-                                raw_lang = b["language"]
+                            if "modifiers" in bd:
+                                binding.modifiers = bd["modifiers"]
+                            if "trigger" in bd:
+                                binding.trigger = bd["trigger"]
+                            if "action" in bd:
+                                # cast: JSON value must match Literal at runtime
+                                binding.action = cast(
+                                    Literal["push_to_talk", "toggle", "copy_to_clipboard"],
+                                    bd["action"],
+                                )
+                            if "language" in bd:
+                                raw_lang: Any = bd["language"]
                                 binding.language = str(raw_lang) if raw_lang is not None else None
-                            if "inject_to" in b:
-                                binding.inject_to = str(b["inject_to"])
-                            if "append_enter" in b:
-                                binding.append_enter = bool(b["append_enter"])
-                            if "suppress" in b:
-                                binding.suppress = bool(b["suppress"])
+                            if "inject_to" in bd:
+                                binding.inject_to = str(bd["inject_to"])
+                            if "append_enter" in bd:
+                                binding.append_enter = bool(bd["append_enter"])
+                            if "suppress" in bd:
+                                binding.suppress = bool(bd["suppress"])
                             # tmux_target and tmux_keys are silently ignored for
                             # backward compatibility — old configs won't break.
                             bindings.append(binding)
@@ -283,7 +299,11 @@ class DictationConfig:
                     "modifiers", ["KEY_LEFTCTRL", "KEY_LEFTALT"]
                 )
                 old_trigger: str = raw_hotkey.get("trigger", "KEY_SPACE")
-                old_action: str = raw_hotkey.get("mode", "push_to_talk")
+                # cast: old JSON "mode" field maps to Literal action values
+                old_action = cast(
+                    Literal["push_to_talk", "toggle", "copy_to_clipboard"],
+                    raw_hotkey.get("mode", "push_to_talk"),
+                )
                 config.hotkey.bindings = [
                     HotkeyBinding(
                         modifiers=old_mods,
@@ -293,7 +313,10 @@ class DictationConfig:
                 ]
             # Apply remaining hotkey fields (backend, evdev_device, debounce)
             if "backend" in raw_hotkey:
-                config.hotkey.backend = raw_hotkey["backend"]
+                # cast: JSON value must match Literal at runtime
+                config.hotkey.backend = cast(
+                    Literal["auto", "evdev", "pynput"], raw_hotkey["backend"]
+                )
             if "evdev_device" in raw_hotkey:
                 config.hotkey.evdev_device = raw_hotkey["evdev_device"]
             if "push_to_talk_debounce_ms" in raw_hotkey:

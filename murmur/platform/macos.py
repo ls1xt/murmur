@@ -24,7 +24,7 @@ def check_accessibility() -> bool:
     (cannot check; pynput will fail at runtime if permission is missing).
     """
     try:
-        from ApplicationServices import AXIsProcessTrusted  # type: ignore[import]
+        from ApplicationServices import AXIsProcessTrusted
 
         return bool(AXIsProcessTrusted())
     except ImportError:
@@ -45,7 +45,7 @@ def check_microphone() -> bool:
     Fatal-callers should only exit on denied (2) or restricted (1).
     """
     try:
-        import AVFoundation  # type: ignore[import]
+        import AVFoundation
 
         status = int(
             AVFoundation.AVCaptureDevice.authorizationStatusForMediaType_(

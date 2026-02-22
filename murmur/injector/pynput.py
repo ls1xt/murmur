@@ -19,12 +19,12 @@ import unicodedata
 
 from pynput import keyboard
 
-from murmur.injector.base import TextInjector
+from murmur.injector.base import InjectStrategy, TextInjector
 
 logger = logging.getLogger(__name__)
 
 
-def _sanitize_text(text: str) -> str:
+def sanitize_text(text: str) -> str:
     """Strip control characters before injection.
 
     Control characters (newline, carriage return, tab, NUL, ...) can cause
@@ -50,7 +50,7 @@ class PynputInjector(TextInjector):
     def __init__(
         self,
         trailing_space: bool = True,
-        inject_strategy: str = "clipboard-fallback",
+        inject_strategy: InjectStrategy = "clipboard-fallback",
         key_delay: int = 0,
     ) -> None:
         self._trailing_space = trailing_space
@@ -62,7 +62,7 @@ class PynputInjector(TextInjector):
         """Check if pynput can inject text (Accessibility permission on macOS)."""
         try:
             from ApplicationServices import (
-                AXIsProcessTrusted,  # type: ignore[import-untyped]
+                AXIsProcessTrusted,
             )
 
             return bool(AXIsProcessTrusted())
@@ -75,7 +75,7 @@ class PynputInjector(TextInjector):
         if not text:
             return
 
-        text = _sanitize_text(text)
+        text = sanitize_text(text)
         if not text:
             return
 
@@ -95,7 +95,7 @@ class PynputInjector(TextInjector):
         if not text:
             return
 
-        text = _sanitize_text(text)
+        text = sanitize_text(text)
         if not text:
             return
 

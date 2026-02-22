@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
+
+TrayState = Literal["idle", "recording", "error"]
 
 # Icon colors: (fill, outline) per state
 _STATE_COLORS: dict[str, tuple[str, str]] = {
@@ -11,7 +13,7 @@ _STATE_COLORS: dict[str, tuple[str, str]] = {
     "error": ("#ff9933", "#cc6600"),
 }
 
-_STATE_TITLES: dict[str, str] = {
+STATE_TITLES: dict[str, str] = {
     "idle": "Idle",
     "recording": "Recording",
     "error": "Error",
@@ -20,12 +22,12 @@ _STATE_TITLES: dict[str, str] = {
 ICON_SIZE = 64
 
 
-def create_icon_image(state: str) -> Any:
+def create_icon_image(state: TrayState) -> Any:
     """Create a 64x64 RGBA PIL image with a colored circle for the state.
 
     Returns a PIL.Image.Image or raises ImportError if Pillow unavailable.
     """
-    from PIL import Image, ImageDraw  # type: ignore[import-untyped]
+    from PIL import Image, ImageDraw
 
     fill, outline = _STATE_COLORS.get(state, _STATE_COLORS["idle"])
 

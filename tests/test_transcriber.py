@@ -16,7 +16,7 @@ class TestTranscriberBase:
 
     def test_is_streaming_initially_false(self) -> None:
         class StubTranscriber(Transcriber):
-            def start(self) -> None:
+            def start(self, language: str | None = None) -> None:
                 pass
 
             def stop(self) -> None:
@@ -27,7 +27,7 @@ class TestTranscriberBase:
 
     def test_set_callbacks_stores_them(self) -> None:
         class StubTranscriber(Transcriber):
-            def start(self) -> None:
+            def start(self, language: str | None = None) -> None:
                 pass
 
             def stop(self) -> None:
@@ -38,9 +38,9 @@ class TestTranscriberBase:
         on_final = MagicMock()
         on_error = MagicMock()
         t.set_callbacks(on_partial=on_partial, on_final=on_final, on_error=on_error)
-        assert t._on_partial is on_partial
-        assert t._on_final is on_final
-        assert t._on_error is on_error
+        assert t.on_partial is on_partial
+        assert t.on_final is on_final
+        assert t.on_error is on_error
 
 
 class TestAssemblyAITranscriber:
@@ -123,7 +123,7 @@ class TestAssemblyAITranscriber:
         mock_event.end_of_turn = True
         mock_event.turn_is_formatted = True
 
-        transcriber._on_turn(MagicMock(), mock_event)
+        transcriber.on_turn(MagicMock(), mock_event)
 
         on_final.assert_called_once_with("Hello world.")
         on_partial.assert_not_called()
@@ -148,7 +148,7 @@ class TestAssemblyAITranscriber:
         mock_event.end_of_turn = False
         mock_event.turn_is_formatted = False
 
-        transcriber._on_turn(MagicMock(), mock_event)
+        transcriber.on_turn(MagicMock(), mock_event)
 
         on_partial.assert_called_once_with("Hello")
         on_final.assert_not_called()
@@ -187,7 +187,7 @@ class TestAssemblyAITranscriber:
         mock_event.end_of_turn = True
         mock_event.turn_is_formatted = False
 
-        transcriber._on_turn(MagicMock(), mock_event)
+        transcriber.on_turn(MagicMock(), mock_event)
         on_final.assert_called_once_with("hello world")
 
 
@@ -218,7 +218,7 @@ class TestAssemblyAIErrorHandling:
 
         config = TranscriberConfig(api_key="test_key")
         transcriber = AssemblyAITranscriber(config)
-        transcriber._on_stream_error(MagicMock(), "some error", transcriber._session_gen)
+        transcriber.on_stream_error(MagicMock(), "some error", transcriber.session_gen)
 
         mock_fatal.assert_called_once()
         call_msg: str = mock_fatal.call_args[0][0]
@@ -232,7 +232,7 @@ class TestAssemblyAIErrorHandling:
 
         config = TranscriberConfig(api_key="test_key")
         transcriber = AssemblyAITranscriber(config)
-        transcriber._on_stream_error(MagicMock(), "Connection closed: 1008", transcriber._session_gen)
+        transcriber.on_stream_error(MagicMock(), "Connection closed: 1008", transcriber.session_gen)
 
         mock_fatal.assert_called_once()
         call_msg: str = mock_fatal.call_args[0][0]
@@ -247,7 +247,7 @@ class TestAssemblyAIErrorHandling:
 
         config = TranscriberConfig(api_key="test_key")
         transcriber = AssemblyAITranscriber(config)
-        transcriber._on_stream_error(MagicMock(), "Session error: 3005", transcriber._session_gen)
+        transcriber.on_stream_error(MagicMock(), "Session error: 3005", transcriber.session_gen)
 
         mock_fatal.assert_called_once()
         call_msg: str = mock_fatal.call_args[0][0]
@@ -271,11 +271,11 @@ class TestAssemblyAIErrorHandling:
         # is_streaming is True -- unexpected termination
         mock_event = MagicMock()
         mock_event.audio_duration_seconds = 5.0
-        transcriber._on_terminated(MagicMock(), mock_event, transcriber._session_gen)
+        transcriber.on_terminated(MagicMock(), mock_event, transcriber.session_gen)
 
         # Should have spawned a reconnect thread
         mock_thread_cls.assert_called_once()
-        assert mock_thread_cls.call_args.kwargs.get("target") == transcriber._reconnect
+        assert mock_thread_cls.call_args.kwargs.get("target") == transcriber.reconnect
         mock_thread.start.assert_called_once()
 
     def test_normal_termination_does_not_call_fatal(self, mocker: Any) -> None:
@@ -291,7 +291,7 @@ class TestAssemblyAIErrorHandling:
         # is_streaming is now False -- normal termination
         mock_event = MagicMock()
         mock_event.audio_duration_seconds = 5.0
-        transcriber._on_terminated(MagicMock(), mock_event, transcriber._session_gen)
+        transcriber.on_terminated(MagicMock(), mock_event, transcriber.session_gen)
 
         mock_fatal.assert_not_called()
 
@@ -302,6 +302,6 @@ class TestTranscriberFactory:
     def test_unknown_backend_raises(self) -> None:
         from murmur.transcriber import create_transcriber
 
-        config = TranscriberConfig(backend="nonexistent")
+        config = TranscriberConfig(backend="nonexistent")  # type: ignore[arg-type]
         with pytest.raises(ValueError, match="Unknown transcriber backend"):
             create_transcriber(config)

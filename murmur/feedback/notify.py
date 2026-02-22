@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import subprocess
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class Notifier:
         - ``"verbose"``: Errors + informational (state changes, startup)
     """
 
-    def __init__(self, level: str = "errors") -> None:
+    def __init__(self, level: Literal["off", "errors", "verbose"] = "errors") -> None:
         self._level = level
 
     def error(self, message: str) -> None:
@@ -42,7 +43,7 @@ class Notifier:
     def _send(
         self,
         message: str,
-        urgency: str = "normal",
+        urgency: Literal["critical", "normal"] = "normal",
         expire_ms: int | None = None,
     ) -> None:
         """Shell out to notify-send. Best-effort, never crashes."""

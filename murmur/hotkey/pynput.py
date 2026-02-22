@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 from pynput import keyboard
 from pynput.keyboard import Key, KeyCode
@@ -279,7 +280,7 @@ class PynputHotkeyListener(HotkeyListener):
             return
 
         has_suppress = any(b.suppress for b in self._bindings)
-        listener_kwargs: dict = {
+        listener_kwargs: dict[str, Any] = {
             "on_press": self._on_press,
             "on_release": self._on_release,
         }
@@ -437,7 +438,7 @@ class PynputHotkeyListener(HotkeyListener):
                 if binding.action in ("push_to_talk", "copy_to_clipboard", "toggle"):
                     self._ptt_press_dispatched = True
                     self._ptt_dispatched_binding_id = id(binding.binding)
-                self._dispatch_action(binding.binding)
+                self.dispatch_action(binding.binding)
 
     def _on_release(self, key: Key | KeyCode | None, injected: bool = False) -> None:
         """Handle a key-release event.
@@ -489,7 +490,7 @@ class PynputHotkeyListener(HotkeyListener):
                         )
                         continue
                     self._ptt_press_dispatched = False
-                    self._dispatch_release(binding.binding)
+                    self.dispatch_release(binding.binding)
                     # Set debounce timestamp AFTER dispatch returns.
                     # _dispatch_release calls _on_deactivate which calls
                     # feedback.play_stop() -- a blocking ~100 ms beep.
@@ -504,7 +505,7 @@ class PynputHotkeyListener(HotkeyListener):
                     self._ptt_press_dispatched = False
                     self._ptt_dispatched_binding_id = None
                 else:
-                    self._dispatch_release(binding.binding)
+                    self.dispatch_release(binding.binding)
 
         self._held.discard(canonical)
         if raw_vk is not None:

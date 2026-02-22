@@ -8,7 +8,7 @@ name = "murmur-dictation"
 version = "0.1.0"
 description = "System-wide voice dictation for Linux and macOS"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 license = {text = "MIT"}
 authors = [
     {name = "Leon Sixt", email = "leon@berleon.eu"},
@@ -22,9 +22,8 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Utilities",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
@@ -36,6 +35,7 @@ dependencies = [
     "Pillow>=10.0.0",
     "PyGObject>=3.42.0; sys_platform == 'linux'",
     "sounddevice>=0.5.5",
+    "typed-argument-parser>=1.10.1",
     "pynput>=1.7.0; sys_platform == 'darwin'",
     "pyobjc-framework-ApplicationServices>=9.0; sys_platform == 'darwin'",
     "pyobjc-framework-AVFoundation>=9.0; sys_platform == 'darwin'",
@@ -75,17 +75,31 @@ exclude = [
 
 [tool.pyright]
 typeCheckingMode = "strict"
-pythonVersion = "3.10"
+pythonVersion = "3.13"
 venvPath = "."
 venv = ".venv"
+
+# Downgraded from "none" → now emit warnings (use per-site ignores where needed)
 reportMissingModuleSource = "none"
 reportMissingTypeStubs = "none"
-reportPrivateUsage = "none"
-reportUntypedFunctionDecorator = "none"
+reportPrivateUsage = "warning"
+reportUntypedFunctionDecorator = "warning"
+
+# New high-value additions
+reportIncompatibleMethodOverride = "warning"
+reportMatchNotExhaustive = "warning"
+reportConstantRedefinition = "warning"
+
+# Keep relaxed — too noisy with untyped third-party libs (PIL, pystray, Gio, evdev, pyobjc)
+reportUnknownParameterType = "none"
+reportUnknownArgumentType = "none"
+reportUnknownVariableType = "none"
+reportUnknownMemberType = "none"
+reportAttributeAccessIssue = "none"  # pyobjc (Quartz/AppKit/AVFoundation) partial stubs
 
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM"]

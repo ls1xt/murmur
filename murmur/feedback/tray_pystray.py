@@ -5,9 +5,13 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from murmur.feedback._tray_common import _STATE_TITLES, create_icon_image
+if TYPE_CHECKING:
+    import pystray
+from murmur.feedback._tray_common import TrayState, STATE_TITLES, create_icon_image
+
+__all__ = ["PystrayTray"]
 
 logger = logging.getLogger(__name__)
 
@@ -27,21 +31,40 @@ class PystrayTray:
         self._on_quit = on_quit
         self._icon: Any = None
         self._thread: threading.Thread | None = None
-        self._state = "idle"
+        self._state: TrayState = "idle"
         self._error_reason = ""
+
+    @property
+    def state(self) -> TrayState:
+        """Current tray state."""
+        return self._state
+
+    @state.setter
+    def state(self, value: TrayState) -> None:
+        """Set the tray state."""
+        self._state = value
+
+    @property
+    def error_reason(self) -> str | None:
+        """Error reason if in error state."""
+        return self._error_reason if self._error_reason else None
+
+    @error_reason.setter
+    def error_reason(self, value: str) -> None:
+        """Set the error reason."""
+        self._error_reason = value
 
     def _build_icon(self) -> Any:
         """Build and return a pystray Icon without running it."""
-        import pystray  # type: ignore[import-untyped]
-
+        import pystray
         icon_image = create_icon_image("idle")
         menu = pystray.Menu(
             pystray.MenuItem(
-                self._status_text,
+                self.status_text,
                 None,
                 enabled=False,
             ),
-            pystray.MenuItem("Quit", self._on_quit_clicked),
+            pystray.MenuItem("Quit", self.on_quit_clicked),
         )
         return pystray.Icon(
             "murmur",
@@ -72,8 +95,7 @@ class PystrayTray:
         if sys.platform != "darwin":
             return
         try:
-            import AppKit  # type: ignore[import-untyped]
-
+            import AppKit
             AppKit.NSApplication.sharedApplication()
         except ImportError:
             pass
@@ -96,26 +118,25 @@ class PystrayTray:
 
         self._icon.run(setup=_setup)
 
-    def set_state(self, state: str, reason: str = "") -> None:
+    def set_state(self, state: TrayState, reason: str = "") -> None:
         """Update icon state. Thread-safe via GLib.idle_add when available."""
         self._state = state
         self._error_reason = reason
         if self._icon is None:
             return
         try:
-            from gi.repository import GLib  # type: ignore[import-untyped]
-
+            from gi.repository import GLib  # type: ignore[reportMissingImports]
             GLib.idle_add(  # type: ignore[reportUnknownMemberType]
                 self._apply_state, state, reason
             )
         except ImportError:
             self._apply_state(state, reason)
 
-    def _apply_state(self, state: str, reason: str) -> bool:
+    def _apply_state(self, state: TrayState, reason: str) -> bool:
         """Apply state update (must run on GLib thread when AppIndicator active)."""
         try:
             self._icon.icon = create_icon_image(state)
-            title = _STATE_TITLES.get(state, "Idle")
+            title = STATE_TITLES.get(state, "Idle")
             if state == "error" and reason:
                 title = f"Error: {reason}"
             self._icon.title = f"Murmur - {title}"
@@ -132,14 +153,14 @@ class PystrayTray:
             except Exception as e:
                 logger.debug("Tray icon stop failed: %s", e)
 
-    def _status_text(self, item: "pystray.MenuItem | None" = None) -> str:
+    def status_text(self, item: "pystray.MenuItem | None" = None) -> str:
         """Dynamic status text for the menu item (called by pystray with item arg)."""
-        title = _STATE_TITLES.get(self._state, "Idle")
+        title = STATE_TITLES.get(self._state, "Idle")
         if self._state == "error" and self._error_reason:
             return f"Error: {self._error_reason}"
         return title
 
-    def _on_quit_clicked(
+    def on_quit_clicked(
         self,
         icon: Any = None,
         item: Any = None,

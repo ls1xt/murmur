@@ -11,9 +11,9 @@ import sys
 import tempfile
 import threading
 import wave
-from typing import Any
+from typing import Any, ClassVar, Final
 
-import sounddevice as _sd  # type: ignore[import-untyped]
+import sounddevice as _sd
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,8 @@ class AudioFeedback:
     sounddevice.  On other platforms falls back to sounddevice.
     """
 
-    _SAMPLE_RATE = 44100
+    _SAMPLE_RATE: Final[int] = 44100
+    _audio_warned: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -57,6 +58,31 @@ class AudioFeedback:
     # Public API
     # ------------------------------------------------------------------
 
+    @property
+    def enabled(self) -> bool:
+        """Return whether audio feedback is enabled."""
+        return self._enabled
+
+    @property
+    def start_wav(self) -> str | None:
+        """Return path to pre-generated start WAV file, if any."""
+        return self._start_wav
+
+    @start_wav.setter
+    def start_wav(self, value: str | None) -> None:
+        """Set the path to the pre-generated start WAV file."""
+        self._start_wav = value
+
+    @property
+    def start_hz(self) -> float:
+        """Return start tone frequency in Hz."""
+        return self._start_hz
+
+    @property
+    def stop_hz(self) -> float:
+        """Return stop tone frequency in Hz."""
+        return self._stop_hz
+
     def play_start(self) -> None:
         """Play a short beep indicating recording started (non-blocking)."""
         if not self._enabled or self._start_duration_ms <= 0:
@@ -73,7 +99,7 @@ class AudioFeedback:
             except Exception as exc:
                 logger.debug("afplay failed: %s", exc)
         threading.Thread(
-            target=self._play_tone,
+            target=self.play_tone,
             args=(self._start_hz, self._start_duration_ms / 1000.0, self._amplitude),
             daemon=True,
         ).start()
@@ -90,7 +116,7 @@ class AudioFeedback:
         """
         if not self._enabled or self._stop_duration_ms <= 0:
             return
-        self._play_tone(self._stop_hz, self._stop_duration_ms / 1000.0, self._amplitude)
+        self.play_tone(self._stop_hz, self._stop_duration_ms / 1000.0, self._amplitude)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -128,7 +154,7 @@ class AudioFeedback:
         return path
 
     @staticmethod
-    def _play_tone(frequency: float, duration: float, amplitude: float = 0.3) -> None:
+    def play_tone(frequency: float, duration: float, amplitude: float = 0.3) -> None:
         """Generate and play a sine wave tone via sounddevice (fallback)."""
         sample_rate = AudioFeedback._SAMPLE_RATE
         num_samples = int(sample_rate * duration)
@@ -158,8 +184,8 @@ class AudioFeedback:
                 stream.stop()
                 stream.close()
         except Exception as e:
-            if not getattr(AudioFeedback, "_audio_warned", False):
+            if not AudioFeedback._audio_warned:
                 logger.warning("Audio feedback error: %s", e)
-                AudioFeedback._audio_warned = True  # type: ignore[attr-defined]
+                AudioFeedback._audio_warned = True
             else:
                 logger.debug("Audio feedback error: %s", e)
