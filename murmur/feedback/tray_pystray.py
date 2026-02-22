@@ -56,6 +56,28 @@ class PystrayTray:
         self._thread = threading.Thread(target=self._icon.run, daemon=True)
         self._thread.start()
 
+    def _platform_setup(self) -> None:
+        """Platform-specific initialisation called before the icon is built.
+
+        On macOS: pre-initialises NSApplication.sharedApplication() on the
+        calling (main) thread.  NSApplication is a singleton so this is
+        idempotent, but doing it here guarantees AppKit is bootstrapped while
+        we are definitely on the main thread — preventing an intermittent
+        SIGABRT inside NSApp.run() caused by a race in AppKit's own startup.
+
+        On Linux/other: no-op.
+        """
+        import sys
+
+        if sys.platform != "darwin":
+            return
+        try:
+            import AppKit  # type: ignore[import-untyped]
+
+            AppKit.NSApplication.sharedApplication()
+        except ImportError:
+            pass
+
     def run_blocking(self, setup_fn: Callable[[], None]) -> None:
         """Build and run the pystray icon on the calling thread.
 
@@ -64,6 +86,7 @@ class PystrayTray:
         ``setup_fn`` is invoked in a background thread once the icon is ready;
         when it returns the event loop is stopped.
         """
+        self._platform_setup()
         self._icon = self._build_icon()
 
         def _setup(icon: Any) -> None:

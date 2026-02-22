@@ -68,12 +68,23 @@ case "$OS" in
         # Accessibility permission to Murmur.app in System Settings rather
         # than to the raw Python binary (which cannot be added via the UI).
         APP_LAUNCHER="$SCRIPT_DIR/Murmur.app/Contents/MacOS/murmur"
-        if [ -x "$APP_LAUNCHER" ]; then
+        [ -x "$APP_LAUNCHER" ] || APP_LAUNCHER="$SCRIPT_DIR/.venv/bin/murmur"
+
+        # Retry up to 3 times on SIGABRT (exit code 134 = 128+6).
+        # pystray's NSApp.run() can intermittently abort on macOS due to an
+        # AppKit timing issue; a single retry reliably recovers.
+        _attempt=0
+        while [ "$_attempt" -lt 3 ]; do
+            _attempt=$((_attempt + 1))
+            set +e
             "$APP_LAUNCHER" "$@"
-        else
-            # Fallback if the .app bundle is missing (re-run setup.sh)
-            "$SCRIPT_DIR/.venv/bin/murmur" "$@"
-        fi
+            _rc=$?
+            set -e
+            [ "$_rc" -eq 134 ] || exit "$_rc"   # not SIGABRT: propagate as-is
+            [ "$_attempt" -lt 3 ] || exit "$_rc" # out of retries: give up
+            echo "murmur: AppKit crash on startup (SIGABRT), retrying (attempt $((_attempt + 1))/3)..." >&2
+            sleep 0.5
+        done
         ;;
 
     *)
