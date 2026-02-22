@@ -13,6 +13,7 @@ import os
 import signal
 import subprocess
 import sys
+from typing import NoReturn
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ def _notify(message: str) -> None:
         )
 
 
-def fatal(message: str) -> None:
+def fatal(message: str) -> NoReturn:
     """Log error, send desktop notification, and exit the process.
 
     Use from the main thread. For background threads, use

@@ -82,7 +82,7 @@ venv = ".venv"
 # Downgraded from "none" → now emit warnings (use per-site ignores where needed)
 reportMissingModuleSource = "none"
 reportMissingTypeStubs = "none"
-reportPrivateUsage = "warning"
+reportPrivateUsage = "error"
 reportUntypedFunctionDecorator = "warning"
 
 # New high-value additions

@@ -23,6 +23,7 @@ class _TrayBackend(Protocol):
     def set_state(self, state: TrayState, reason: str) -> None: ...
     def stop(self) -> None: ...
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -97,7 +98,9 @@ class TrayIcon:
         try:
             from murmur.feedback.sni import SniTray
 
-            self._backend = SniTray(on_quit=self._on_quit, on_activate=self._on_activate)
+            self._backend = SniTray(
+                on_quit=self._on_quit, on_activate=self._on_activate
+            )
             self._backend.start()
             self._available = True
             logger.info("Tray icon started (SNI/Sway)")

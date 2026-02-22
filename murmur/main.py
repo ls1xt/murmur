@@ -17,8 +17,7 @@ from typing import Literal
 
 from tap import Tap
 
-from murmur.app import DictationApp
-from murmur.app import SessionFilter
+from murmur.app import DictationApp, SessionFilter
 from murmur.config import DictationConfig
 from murmur.errors import fatal
 
@@ -72,7 +71,7 @@ def _set_dotted(obj: object, key: str, value: str) -> None:
 
 
 class _ConfigArgs(Tap):
-    key: str | None = None    # dot-separated config key (e.g. transcriber.api_key)
+    key: str | None = None  # dot-separated config key (e.g. transcriber.api_key)
     value: str | None = None  # value to set for the given key
 
     def configure(self) -> None:
@@ -85,8 +84,12 @@ class _ListMicsArgs(Tap):
 
 
 class _RecordArgs(Tap):
-    inject: Literal["ydotool", "clipboard-fallback", "clipboard"] | None = None  # injection backend override
-    notify: Literal["off", "errors", "verbose"] | None = None  # notification level override
+    inject: Literal["ydotool", "clipboard-fallback", "clipboard"] | None = (
+        None  # injection backend override
+    )
+    notify: Literal["off", "errors", "verbose"] | None = (
+        None  # notification level override
+    )
     inject_partials: bool | None = None  # whether to inject partial transcriptions
 
     def configure(self) -> None:
@@ -105,7 +108,9 @@ class _MurmurArgs(Tap):
     def configure(self) -> None:
         self.add_subparsers(dest="subcommand", help="sub-command help")
         self.add_subparser("config", _ConfigArgs, help="View or set configuration")
-        self.add_subparser("list-mics", _ListMicsArgs, help="List available microphone devices")
+        self.add_subparser(
+            "list-mics", _ListMicsArgs, help="List available microphone devices"
+        )
         self.add_subparser("record", _RecordArgs, help="Single dictation session")
         self.add_subparser("daemon", _DaemonArgs, help="Manage background service")
 

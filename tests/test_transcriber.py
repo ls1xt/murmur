@@ -232,7 +232,9 @@ class TestAssemblyAIErrorHandling:
 
         config = TranscriberConfig(api_key="test_key")
         transcriber = AssemblyAITranscriber(config)
-        transcriber.on_stream_error(MagicMock(), "Connection closed: 1008", transcriber.session_gen)
+        transcriber.on_stream_error(
+            MagicMock(), "Connection closed: 1008", transcriber.session_gen
+        )
 
         mock_fatal.assert_called_once()
         call_msg: str = mock_fatal.call_args[0][0]
@@ -247,7 +249,9 @@ class TestAssemblyAIErrorHandling:
 
         config = TranscriberConfig(api_key="test_key")
         transcriber = AssemblyAITranscriber(config)
-        transcriber.on_stream_error(MagicMock(), "Session error: 3005", transcriber.session_gen)
+        transcriber.on_stream_error(
+            MagicMock(), "Session error: 3005", transcriber.session_gen
+        )
 
         mock_fatal.assert_called_once()
         call_msg: str = mock_fatal.call_args[0][0]

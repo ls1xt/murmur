@@ -15,8 +15,8 @@ class TestTrayIconGracefulDegradation:
     def test_start_graceful_on_import_error(self, _mock_sway: object) -> None:
         """If pystray backend raises, tray stays unavailable without crash."""
         tray = TrayIcon()
-        with patch("murmur.feedback.tray_pystray.PystrayTray") as MockPystray:
-            MockPystray.side_effect = Exception("no pystray")
+        with patch("murmur.feedback.tray_pystray.PystrayTray") as mock_pystray_cls:
+            mock_pystray_cls.side_effect = Exception("no pystray")
             tray.start()
         assert not tray.available
 

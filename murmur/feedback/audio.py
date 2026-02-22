@@ -49,7 +49,9 @@ class AudioFeedback:
 
         if enabled and start_duration_ms > 0 and sys.platform == "darwin":
             try:
-                self._start_wav = self._write_wav(start_hz, start_duration_ms / 1000.0, amplitude)
+                self._start_wav = self._write_wav(
+                    start_hz, start_duration_ms / 1000.0, amplitude
+                )
                 logger.debug("Pre-generated start WAV: %s", self._start_wav)
             except Exception as exc:
                 logger.debug("WAV pre-generation failed, using sounddevice: %s", exc)
@@ -123,7 +125,9 @@ class AudioFeedback:
     # ------------------------------------------------------------------
 
     @classmethod
-    def _write_wav(cls, frequency: float, duration: float, amplitude: float = 0.3) -> str:
+    def _write_wav(
+        cls, frequency: float, duration: float, amplitude: float = 0.3
+    ) -> str:
         """Generate a sine-wave WAV file and return its path."""
         n = int(cls._SAMPLE_RATE * duration)
         data = struct.pack(

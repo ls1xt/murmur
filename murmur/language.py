@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import os
-from enum import Enum
+from enum import StrEnum
 
 
-class Language(str, Enum):
+class Language(StrEnum):
     """Supported language codes.
 
     Values are the ISO 639-1 (or AssemblyAI variant) language code strings

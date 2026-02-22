@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import pystray
-from murmur.feedback._tray_common import TrayState, STATE_TITLES, create_icon_image
+from murmur.feedback._tray_common import STATE_TITLES, TrayState, create_icon_image
 
 __all__ = ["PystrayTray"]
 
@@ -57,6 +57,7 @@ class PystrayTray:
     def _build_icon(self) -> Any:
         """Build and return a pystray Icon without running it."""
         import pystray
+
         icon_image = create_icon_image("idle")
         menu = pystray.Menu(
             pystray.MenuItem(
@@ -96,6 +97,7 @@ class PystrayTray:
             return
         try:
             import AppKit
+
             AppKit.NSApplication.sharedApplication()
         except ImportError:
             pass
@@ -126,6 +128,7 @@ class PystrayTray:
             return
         try:
             from gi.repository import GLib  # type: ignore[reportMissingImports]
+
             GLib.idle_add(  # type: ignore[reportUnknownMemberType]
                 self._apply_state, state, reason
             )
@@ -153,7 +156,7 @@ class PystrayTray:
             except Exception as e:
                 logger.debug("Tray icon stop failed: %s", e)
 
-    def status_text(self, item: "pystray.MenuItem | None" = None) -> str:
+    def status_text(self, item: pystray.MenuItem | None = None) -> str:
         """Dynamic status text for the menu item (called by pystray with item arg)."""
         title = STATE_TITLES.get(self._state, "Idle")
         if self._state == "error" and self._error_reason:

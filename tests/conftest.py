@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -65,6 +66,21 @@ def pytest_collection_modifyitems(
             item.add_marker(pytest.mark.skip(reason="Linux only"))
         if item.get_closest_marker("macos_only") and sys.platform != "darwin":
             item.add_marker(pytest.mark.skip(reason="macOS only"))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _portaudio_cleanup() -> Generator[None]:  # pyright: ignore[reportUnusedFunction]
+    """Terminate PortAudio after the test session to prevent shutdown segfaults.
+
+    Importing sounddevice initializes PortAudio, which spawns CoreAudio
+    background threads on macOS.  Explicitly terminating before Python exits
+    prevents a race between those threads and interpreter teardown.
+    """
+    yield
+    import sounddevice  # noqa: PLC0415
+
+    with contextlib.suppress(Exception):
+        sounddevice._terminate()  # type: ignore[attr-defined]
 
 
 @pytest.fixture()
@@ -150,7 +166,7 @@ def real_api_key() -> str:
 @pytest.fixture(scope="session")
 def virtual_mic_device(
     request: pytest.FixtureRequest,
-) -> Generator[str | int, None, None]:
+) -> Generator[str | int]:
     """Yield the virtual mic device name or index for audio pipeline tests.
 
     On Linux: detects snd-aloop ALSA loopback device by name (contains 'loopback').

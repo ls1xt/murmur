@@ -1,4 +1,5 @@
 """tmux send-keys based text injector."""
+
 from __future__ import annotations
 
 import logging

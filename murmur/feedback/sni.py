@@ -14,14 +14,16 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from murmur.feedback._tray_common import (
     ICON_SIZE,
-    TrayState,
     STATE_TITLES,
+    TrayState,
+)
+from murmur.feedback._tray_common import (
     create_icon_image as _create_icon_image,
 )
+
+logger = logging.getLogger(__name__)
 
 # SNI D-Bus XML interface definition (minimal)
 _SNI_XML = """\
@@ -93,6 +95,7 @@ class SniTray:
     def start(self) -> None:
         """Register SNI object on the session D-Bus and start GLib loop."""
         from gi.repository import Gio, GLib  # type: ignore[reportMissingImports]
+
         self._node_info = Gio.DBusNodeInfo.new_for_xml(_SNI_XML)  # pyright: ignore[reportUnknownMemberType]
         iface_info: Any = self._node_info.interfaces[0]  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
@@ -130,6 +133,7 @@ class SniTray:
     ) -> None:
         """Called when the bus name is acquired. Register with watcher."""
         from gi.repository import GLib  # type: ignore[reportMissingImports]
+
         try:
             conn.call_sync(
                 "org.kde.StatusNotifierWatcher",
@@ -177,6 +181,7 @@ class SniTray:
     ) -> Any:
         """Handle D-Bus property reads."""
         from gi.repository import GLib  # type: ignore[reportMissingImports]
+
         _v: Any = GLib.Variant  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
         name: str = str(prop_name)
         if name == "Category":
@@ -209,6 +214,7 @@ class SniTray:
         self._state = state
         try:
             from gi.repository import GLib  # type: ignore[reportMissingImports]
+
             GLib.idle_add(self._emit_new_icon)  # pyright: ignore[reportUnknownMemberType]
         except ImportError:
             pass
@@ -231,6 +237,7 @@ class SniTray:
     def stop(self) -> None:
         """Stop the SNI tray: unregister, unown, quit loop."""
         from gi.repository import Gio  # type: ignore[reportMissingImports]
+
         if self._conn is not None and self._reg_id:
             with contextlib.suppress(Exception):
                 self._conn.unregister_object(self._reg_id)

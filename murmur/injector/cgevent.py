@@ -86,7 +86,9 @@ class CGEventInjector(TextInjector):
     def is_available(self) -> bool:
         """Check if Quartz and Accessibility are available."""
         try:
-            from Quartz import CGEventCreateKeyboardEvent  # noqa: F401  # pyright: ignore[reportUnusedImport]
+            from Quartz import (
+                CGEventCreateKeyboardEvent,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+            )
         except ImportError:
             return False
         try:
@@ -180,7 +182,12 @@ class CGEventInjector(TextInjector):
         terminal emulators, and native Cocoa apps all read the unicode string
         from the NSEvent generated from this CGEvent.
         """
-        from Quartz import CGEventCreateKeyboardEvent, CGEventKeyboardSetUnicodeString, CGEventPost, kCGSessionEventTap
+        from Quartz import (
+            CGEventCreateKeyboardEvent,
+            CGEventKeyboardSetUnicodeString,
+            CGEventPost,
+            kCGSessionEventTap,
+        )
 
         source = self._get_source()
         for char in text:

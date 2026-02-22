@@ -199,14 +199,14 @@ class DictationConfig:
         if api_key := os.environ.get("ASSEMBLYAI_API_KEY"):
             config.transcriber.api_key = api_key
 
-        if log_level := os.environ.get("MURMUR_LOG_LEVEL") or os.environ.get("DICTATION_LOG_LEVEL"):
+        if log_level := os.environ.get("MURMUR_LOG_LEVEL") or os.environ.get(
+            "DICTATION_LOG_LEVEL"
+        ):
             config.log_level = log_level
 
         if backend := os.environ.get("DICTATION_HOTKEY_BACKEND"):
             # cast: env var is user-supplied; runtime value must match Literal
-            config.hotkey.backend = cast(
-                Literal["auto", "evdev", "pynput"], backend
-            )
+            config.hotkey.backend = cast(Literal["auto", "evdev", "pynput"], backend)
 
         if backend := os.environ.get("DICTATION_INJECTOR_BACKEND"):
             # cast: env var is user-supplied; runtime value must match Literal
@@ -222,7 +222,9 @@ class DictationConfig:
 
         if notify_level := os.environ.get("MURMUR_NOTIFY_LEVEL"):
             # cast: env var is user-supplied; runtime value must match Literal
-            config.notify.level = cast(Literal["off", "errors", "verbose"], notify_level)
+            config.notify.level = cast(
+                Literal["off", "errors", "verbose"], notify_level
+            )
 
         if mic_device := os.environ.get("MURMUR_MIC_DEVICE"):
             config.transcriber.mic_device = mic_device
@@ -276,12 +278,16 @@ class DictationConfig:
                             if "action" in bd:
                                 # cast: JSON value must match Literal at runtime
                                 binding.action = cast(
-                                    Literal["push_to_talk", "toggle", "copy_to_clipboard"],
+                                    Literal[
+                                        "push_to_talk", "toggle", "copy_to_clipboard"
+                                    ],
                                     bd["action"],
                                 )
                             if "language" in bd:
                                 raw_lang: Any = bd["language"]
-                                binding.language = str(raw_lang) if raw_lang is not None else None
+                                binding.language = (
+                                    str(raw_lang) if raw_lang is not None else None
+                                )
                             if "inject_to" in bd:
                                 binding.inject_to = str(bd["inject_to"])
                             if "append_enter" in bd:

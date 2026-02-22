@@ -280,6 +280,7 @@ class AssemblyAITranscriber(Transcriber):
         events: Any = _v3.StreamingEvents
         client.on(events.Begin, self._on_begin)
         client.on(events.Turn, self.on_turn)
+
         # Bind with generation captured now so stale callbacks from old
         # sessions are silently ignored rather than crashing the daemon.
         def _on_term(c: Any, e: Any, g: int = my_gen) -> None:
@@ -303,14 +304,14 @@ class AssemblyAITranscriber(Transcriber):
         # v3 API has no language_code input — use speech_model to select
         # multilingual (non-English) vs English-optimised model.
         if effective_language and not effective_language.startswith("en"):
-            params_kwargs["speech_model"] = _v3.SpeechModel.universal_streaming_multilingual
+            params_kwargs["speech_model"] = (
+                _v3.SpeechModel.universal_streaming_multilingual
+            )
             params_kwargs["language_detection"] = True
         else:
             params_kwargs["speech_model"] = _v3.SpeechModel.universal_streaming_english
         params: Any = _v3.StreamingParameters(**params_kwargs)
-        logger.info(
-            "StreamingParameters kwargs sent to AssemblyAI: %s", params_kwargs
-        )
+        logger.info("StreamingParameters kwargs sent to AssemblyAI: %s", params_kwargs)
         # Open the mic stream BEFORE connecting so that audio captured during
         # the WebSocket handshake (~200-500 ms) is buffered in the queue and
         # not lost.
@@ -502,6 +503,7 @@ class AssemblyAITranscriber(Transcriber):
                 events: Any = _v3.StreamingEvents
                 reconnect_client.on(events.Begin, self._on_begin)
                 reconnect_client.on(events.Turn, self.on_turn)
+
                 def _on_term_r(c: Any, e: Any, g: int = my_gen) -> None:
                     self.on_terminated(c, e, g)
 
@@ -518,11 +520,17 @@ class AssemblyAITranscriber(Transcriber):
                 }
                 if self._config.keyterms_prompt:
                     params_kwargs["keyterms_prompt"] = self._config.keyterms_prompt
-                if self._current_language and not self._current_language.startswith("en"):
-                    params_kwargs["speech_model"] = _v3.SpeechModel.universal_streaming_multilingual
+                if self._current_language and not self._current_language.startswith(
+                    "en"
+                ):
+                    params_kwargs["speech_model"] = (
+                        _v3.SpeechModel.universal_streaming_multilingual
+                    )
                     params_kwargs["language_detection"] = True
                 else:
-                    params_kwargs["speech_model"] = _v3.SpeechModel.universal_streaming_english
+                    params_kwargs["speech_model"] = (
+                        _v3.SpeechModel.universal_streaming_english
+                    )
                 logger.info(
                     "Reconnect StreamingParameters kwargs sent to AssemblyAI: %s",
                     params_kwargs,

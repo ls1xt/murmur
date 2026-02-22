@@ -13,8 +13,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from murmur.config import DictationConfig, FeedbackConfig, HotkeyBinding, TrayConfig
 from murmur.app import DictationApp
+from murmur.config import DictationConfig, FeedbackConfig, HotkeyBinding, TrayConfig
 from murmur.main import main
 
 
@@ -433,9 +433,7 @@ class TestConfigReload:
 
         mock_load.assert_not_called()
 
-    def test_maybe_reload_config_load_failure_logs_warning(
-        self, mocker: Any
-    ) -> None:
+    def test_maybe_reload_config_load_failure_logs_warning(self, mocker: Any) -> None:
         """Failed config reload logs a warning and does not crash."""
         app, _, _, _ = _make_app(mocker)
 
