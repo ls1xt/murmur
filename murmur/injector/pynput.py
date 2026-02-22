@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import time
 import unicodedata
 
 from pynput import keyboard
@@ -50,9 +51,11 @@ class PynputInjector(TextInjector):
         self,
         trailing_space: bool = True,
         inject_strategy: str = "clipboard-fallback",
+        key_delay: int = 0,
     ) -> None:
         self._trailing_space = trailing_space
         self._inject_strategy = inject_strategy
+        self._key_delay_s: float = key_delay / 1000.0
         self._controller = keyboard.Controller()
 
     def is_available(self) -> bool:
@@ -83,12 +86,12 @@ class PynputInjector(TextInjector):
             self._inject_via_clipboard(text)
         elif self._inject_strategy == "clipboard-fallback":
             if text.isascii():
-                self._controller.type(text)
+                self._type(text)
             else:
                 self._inject_via_clipboard(text)
         else:
             # "pynput" strategy (default fallback)
-            self._controller.type(text)
+            self._type(text)
 
     def inject_raw(self, text: str) -> None:
         """Inject text without trailing space, routing through the configured strategy.
@@ -111,12 +114,12 @@ class PynputInjector(TextInjector):
             self._inject_via_clipboard(text)
         elif self._inject_strategy == "clipboard-fallback":
             if text.isascii():
-                self._controller.type(text)
+                self._type(text)
             else:
                 self._inject_via_clipboard(text)
         else:
             # "pynput" strategy
-            self._controller.type(text)
+            self._type(text)
 
     def inject_backspaces(self, count: int) -> None:
         """Inject N backspace keypresses to erase previously-injected text."""
@@ -145,6 +148,23 @@ class PynputInjector(TextInjector):
         )
         if proc.returncode != 0:
             logger.error("pbcopy failed (rc=%d)", proc.returncode)
+
+    def _type(self, text: str) -> None:
+        """Type text character by character with optional inter-keystroke delay.
+
+        When ``key_delay`` is 0 (default), delegates directly to
+        ``controller.type()`` which posts all CGEvents in a tight loop.
+        When ``key_delay > 0``, sleeps between characters to give the target
+        application's event loop time to advance the cursor between each
+        keystroke -- useful when the app batches key events and the cursor
+        lags behind rapid typing.
+        """
+        if self._key_delay_s <= 0:
+            self._controller.type(text)
+        else:
+            for char in text:
+                self._controller.type(char)
+                time.sleep(self._key_delay_s)
 
     def _inject_via_clipboard(self, text: str) -> None:
         """Inject text via clipboard: pbcopy + Cmd+V."""

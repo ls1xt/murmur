@@ -35,15 +35,17 @@ class HotkeyBinding:
     # tmux_send_keys fields (only used when action == "tmux_send_keys")
     tmux_target: str = ""
     tmux_keys: str = ""
+    suppress: bool = False
 
 
 def _default_bindings() -> list[HotkeyBinding]:
     """Create the default hotkey configuration."""
     return [
         HotkeyBinding(
-            modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
-            trigger="KEY_SPACE",
+            modifiers=[],
+            trigger="KEY_F12",
             action="push_to_talk",
+            suppress=True,
         ),
         HotkeyBinding(
             modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
@@ -229,6 +231,8 @@ class DictationConfig:
                                 binding.tmux_target = str(b["tmux_target"])
                             if "tmux_keys" in b:
                                 binding.tmux_keys = str(b["tmux_keys"])
+                            if "suppress" in b:
+                                binding.suppress = bool(b["suppress"])
                             bindings.append(binding)
                     if bindings:
                         config.hotkey.bindings = bindings

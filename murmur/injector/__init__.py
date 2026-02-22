@@ -26,6 +26,7 @@ def create_injector(config: InjectorConfig) -> TextInjector:
             return PynputInjector(
                 trailing_space=config.trailing_space,
                 inject_strategy=config.inject_strategy,
+                key_delay=config.key_delay,
             )
         case "auto":
             if sys.platform == "linux":
@@ -43,6 +44,7 @@ def create_injector(config: InjectorConfig) -> TextInjector:
                 return PynputInjector(
                     trailing_space=config.trailing_space,
                     inject_strategy=config.inject_strategy,
+                    key_delay=config.key_delay,
                 )
             raise RuntimeError(f"No injector backend available for {sys.platform}")
         case _:

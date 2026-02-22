@@ -4,8 +4,10 @@ pynput-based hotkey listener -- works on macOS without accessibility APIs.
 Uses pynput's raw keyboard.Listener with manual modifier-state tracking to
 detect configured key bindings reliably, including Ctrl+Alt combinations.
 
-Does NOT suppress events (no darwin_intercept) -- per design decision, no
-key grabbing or suppression on macOS.
+Supports optional per-binding event suppression via the darwin_intercept
+callback.  Bindings with ``suppress=True`` (e.g. F12 push-to-talk) use an
+active CGEventTap so the key never reaches the foreground application.
+Bindings without suppression use a passive listen-only tap.
 
 Only imported on darwin (via the hotkey factory). pynput is an optional
 dependency; an ImportError here surfaces a clear message to the user.
@@ -111,6 +113,7 @@ class _ResolvedBinding:
     action: str
     tmux_target: str = ""
     tmux_keys: str = ""
+    suppress: bool = False
 
 
 def _resolve_bindings(bindings: list[HotkeyBinding]) -> list[_ResolvedBinding]:
@@ -131,6 +134,7 @@ def _resolve_bindings(bindings: list[HotkeyBinding]) -> list[_ResolvedBinding]:
                 action=binding.action,
                 tmux_target=binding.tmux_target,
                 tmux_keys=binding.tmux_keys,
+                suppress=binding.suppress,
             )
         )
         logger.debug(
@@ -174,6 +178,7 @@ class PynputHotkeyListener(HotkeyListener):
         self._held: set[Key | KeyCode] = set()
         self._listener: keyboard.Listener | None = None
         self._push_to_talk_debounce_ms: int = push_to_talk_debounce_ms
+        self._suppressed_vk_codes: set[int] = set()
         # Monotonic timestamp of the last push-to-talk real release.
         # macOS generates phantom Space-press events immediately after release
         # (while Ctrl+Option are still held) and also phantom Space-release
@@ -200,10 +205,14 @@ class PynputHotkeyListener(HotkeyListener):
             logger.warning("PynputHotkeyListener already running")
             return
 
-        self._listener = keyboard.Listener(
-            on_press=self._on_press,
-            on_release=self._on_release,
-        )
+        has_suppress = any(b.suppress for b in self._bindings)
+        listener_kwargs: dict = {
+            "on_press": self._on_press,
+            "on_release": self._on_release,
+        }
+        if has_suppress:
+            listener_kwargs["intercept"] = self._darwin_intercept
+        self._listener = keyboard.Listener(**listener_kwargs)
         self._listener.start()
 
         # Re-canonicalize binding keys using the live listener.  Some keys
@@ -213,16 +222,29 @@ class PynputHotkeyListener(HotkeyListener):
         # would never match the <49> seen in on_press events.
         self._bindings = [
             _ResolvedBinding(
-                modifiers=frozenset(
-                    self._listener.canonical(m) for m in b.modifiers
-                ),
+                modifiers=frozenset(self._listener.canonical(m) for m in b.modifiers),
                 trigger=self._listener.canonical(b.trigger),
                 action=b.action,
                 tmux_target=b.tmux_target,
                 tmux_keys=b.tmux_keys,
+                suppress=b.suppress,
             )
             for b in self._bindings
         ]
+
+        # Build set of VK codes for suppress=True bindings (for darwin_intercept).
+        # After canonicalization Key.f12 -> KeyCode(vk=0x6F); extract .vk.
+        self._suppressed_vk_codes = set()
+        for b in self._bindings:
+            if b.suppress:
+                trigger = b.trigger
+                vk = (
+                    trigger.value.vk
+                    if isinstance(trigger, Key)
+                    else getattr(trigger, "vk", None)
+                )
+                if vk is not None:
+                    self._suppressed_vk_codes.add(vk)
 
         logger.info("pynput hotkey listener started")
 
@@ -240,34 +262,69 @@ class PynputHotkeyListener(HotkeyListener):
             self._listener.stop()
             self._listener = None
         self._held.clear()
+        self._suppressed_vk_codes = set()
         self._ptt_last_release_time = 0.0
         self._ptt_press_dispatched = False
         logger.info("pynput hotkey listener stopped")
 
-    def _on_press(self, key: Key | KeyCode | None) -> None:
+    def _darwin_intercept(self, event_type: int, event: object) -> object | None:
+        """Suppress key events for bindings with suppress=True.
+
+        Called by pynput after on_press/on_release have been dispatched.
+        Returning None suppresses the event (not forwarded to the OS).
+        Returning the event passes it through normally.
+
+        Only active when at least one binding has suppress=True.
+        """
+        if not self._suppressed_vk_codes:
+            return event
+        try:
+            from Quartz import CGEventGetIntegerValueField, kCGKeyboardEventKeycode
+
+            keycode = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
+            if keycode in self._suppressed_vk_codes:
+                logger.debug("darwin_intercept: suppressing keycode %d", keycode)
+                return None
+        except Exception as exc:
+            logger.debug("darwin_intercept error: %s", exc)
+        return event
+
+    def _on_press(self, key: Key | KeyCode | None, injected: bool = False) -> None:
         """Handle a key-press event.
 
         Canonicalizes the key (unifying left/right modifier variants), adds
         it to the held set, then checks all bindings for a match.
+
+        ``injected`` is True for synthetic events posted by pynput's own
+        Controller (e.g. from controller.type()).  We skip those to avoid
+        false hotkey triggers and unnecessary _held churn.
         """
         if key is None:
             return
+        if injected:
+            return  # ignore synthetic events from our own controller
 
         canonical: Key | KeyCode = (
             self._listener.canonical(key) if self._listener is not None else key
         )
         self._held.add(canonical)
-        logger.debug("KEY PRESS  raw=%r  canonical=%r  held=%r", key, canonical, self._held)
+        logger.debug(
+            "KEY PRESS  raw=%r  canonical=%r  held=%r", key, canonical, self._held
+        )
 
         for binding in self._bindings:
             if binding.trigger == canonical and binding.modifiers.issubset(self._held):
-                # Block push-to-talk re-activation within debounce window.
-                # macOS generates phantom Space-press events immediately after
-                # release (key-repeat while Ctrl+Option still held).  A short
-                # debounce suppresses them; modifier-release tracking is
-                # unreliable because macOS does not deliver Ctrl/Alt release
-                # events through the CGEventTap in this configuration.
                 if binding.action in ("push_to_talk", "copy_to_clipboard"):
+                    # Ignore key-repeat while a session is already in flight.
+                    # F12 (no modifiers) generates key-repeat events ~20x/s
+                    # while held; only the first press should start recording.
+                    if self._ptt_press_dispatched:
+                        logger.debug(
+                            "Ignoring %s key-repeat (session in flight)",
+                            binding.action,
+                        )
+                        continue
+                    # Block re-activation within debounce window after release.
                     debounce_s = self._push_to_talk_debounce_ms / 1000.0
                     elapsed = time.monotonic() - self._ptt_last_release_time
                     if elapsed < debounce_s:
@@ -291,7 +348,7 @@ class PynputHotkeyListener(HotkeyListener):
                     binding.tmux_keys,
                 )
 
-    def _on_release(self, key: Key | KeyCode | None) -> None:
+    def _on_release(self, key: Key | KeyCode | None, injected: bool = False) -> None:
         """Handle a key-release event.
 
         Canonicalizes the key, dispatches release callbacks for matching
@@ -300,6 +357,8 @@ class PynputHotkeyListener(HotkeyListener):
         """
         if key is None:
             return
+        if injected:
+            return  # ignore synthetic releases from our own controller
 
         canonical: Key | KeyCode = (
             self._listener.canonical(key) if self._listener is not None else key
