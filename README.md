@@ -1,7 +1,7 @@
 # Murmur
 
-Hold F12. Say "extract this into a helper function and write a test for it."
-Release. It appears in Claude Code.
+> **Hold F12.** Say *"extract this into a helper function and write a test for it."*
+> Release. It appears in Claude Code.
 
 System-wide push-to-talk dictation for any app, any language, zero context switch.
 
@@ -138,8 +138,8 @@ Default hotkeys:
 | Key | Mode | Behaviour |
 |-----|------|-----------|
 | **F12** | Push-to-talk | Hold to record, release to inject |
-| **Ctrl+Cmd+M** *(macOS)* / **Ctrl+Alt+M** *(Linux)* | Toggle | Press once to start; press again **or type anything** to stop |
-| **Ctrl+Cmd+C** *(macOS)* / **Ctrl+Alt+C** *(Linux)* | Clipboard | Hold to record, release copies to clipboard |
+| **Ctrl+Cmd+M** *(macOS)* / **Ctrl+Alt+M** *(Linux)* | Toggle | Press once to start; press the hotkey again **or type anything** to stop |
+| **Ctrl+Cmd+C** *(macOS)* / **Ctrl+Alt+C** *(Linux)* | Clipboard | Hold to record, release to copy transcript to clipboard |
 
 ---
 

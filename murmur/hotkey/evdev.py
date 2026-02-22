@@ -190,6 +190,10 @@ class EvdevHotkeyListener(HotkeyListener):
         # event), we cancel the pending release.
         self._push_to_talk_debounce_sec: float = push_to_talk_debounce_ms / 1000.0
         self._pending_releases: dict[int, _PendingRelease] = {}
+        # Action of the currently-active recording binding, or None.
+        # stop_on_keypress should only fire for "toggle" mode; push_to_talk
+        # and copy_to_clipboard are hold-to-record and stop on key release.
+        self._active_action: str | None = None
 
     @property
     def held_keys(self) -> set[int]:
@@ -336,6 +340,7 @@ class EvdevHotkeyListener(HotkeyListener):
             uinput = rel["uinput"]
             del self._pending_releases[code]
             self._suppressed_triggers.discard(code)
+            self._active_action = None
             self.dispatch_release(binding.binding)
             logger.debug(
                 "Debounce fired: dispatched release for code=%d action=%s",
@@ -403,6 +408,7 @@ class EvdevHotkeyListener(HotkeyListener):
                             )
                     uinput.syn()  # type: ignore[reportUnknownMemberType]
 
+                self._active_action = matched_binding.action
                 self.dispatch_action(matched_binding.binding)
             else:
                 # Not a hotkey -- forward the event
@@ -410,15 +416,20 @@ class EvdevHotkeyListener(HotkeyListener):
                     uinput.write_event(event)  # type: ignore[reportUnknownMemberType]
                     uinput.syn()  # type: ignore[reportUnknownMemberType]
                 # stop_on_keypress: any real non-modifier, non-hotkey keypress
-                # stops an active toggle recording.  On Linux, injected events
-                # (e.g. from ydotool) come from virtual devices which are
-                # excluded by find_keyboard_devices(), so they never reach here.
+                # stops an active *toggle* recording.  push_to_talk and
+                # copy_to_clipboard are hold-to-record and stop on key release,
+                # so they must not be interrupted by unrelated keypresses.
+                # On Linux, injected events (e.g. from ydotool) come from
+                # virtual devices excluded by find_keyboard_devices(), so they
+                # never reach here.
                 if (
                     self._stop_on_keypress
+                    and self._active_action == "toggle"
                     and code not in _MODIFIER_CODES
                     and self.on_deactivate is not None
                 ):
                     logger.debug("stop_on_keypress: stopping recording (code=%d)", code)
+                    self._active_action = None
                     self.on_deactivate()
 
         elif keystate == 0:  # Key up
@@ -450,6 +461,7 @@ class EvdevHotkeyListener(HotkeyListener):
                     else:
                         # Toggle actions: release immediately, no debounce needed.
                         self._suppressed_triggers.discard(code)
+                        self._active_action = None
                         self.dispatch_release(released_binding.binding)
 
                         # Restore modifiers: re-press those physically held

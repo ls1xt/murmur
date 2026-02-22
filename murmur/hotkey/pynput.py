@@ -315,6 +315,10 @@ class PynputHotkeyListener(HotkeyListener):
         # Key-repeat suppression only applies to the same binding — a different
         # toggle binding must always be able to stop a running session.
         self._ptt_dispatched_binding_id: int | None = None
+        # Action of the currently-active recording binding, or None.
+        # stop_on_keypress should only fire for "toggle"; push_to_talk and
+        # copy_to_clipboard are hold-to-record and stop on key release.
+        self._active_action: str | None = None
 
     def start(self) -> None:
         """Start listening for hotkeys in a background thread.
@@ -490,18 +494,24 @@ class PynputHotkeyListener(HotkeyListener):
                 if binding.action in ("push_to_talk", "copy_to_clipboard", "toggle"):
                     self._ptt_press_dispatched = True
                     self._ptt_dispatched_binding_id = id(binding.binding)
+                    self._active_action = binding.action
                 self.dispatch_action(binding.binding)
 
         # stop_on_keypress: any real, non-modifier, non-hotkey keypress stops
-        # an active toggle recording.  Injected events are already filtered
-        # above (injected=True guard), so only genuine user input reaches here.
+        # an active *toggle* recording.  push_to_talk and copy_to_clipboard are
+        # hold-to-record and stop on key release, so they must not be
+        # interrupted by unrelated keypresses.  Injected events are already
+        # filtered above (injected=True guard), so only genuine user input
+        # reaches here.
         if (
             not any_binding_matched
             and self._stop_on_keypress
+            and self._active_action == "toggle"
             and canonical not in _MODIFIER_KEYS
             and self.on_deactivate is not None
         ):
             logger.debug("stop_on_keypress: stopping recording (key=%r)", canonical)
+            self._active_action = None
             self.on_deactivate()
 
     def _on_release(self, key: Key | KeyCode | None, injected: bool = False) -> None:
@@ -553,6 +563,7 @@ class PynputHotkeyListener(HotkeyListener):
                         )
                         continue
                     self._ptt_press_dispatched = False
+                    self._active_action = None
                     self.dispatch_release(binding.binding)
                     # Set debounce timestamp AFTER dispatch returns.
                     # _dispatch_release calls _on_deactivate which calls
@@ -567,6 +578,7 @@ class PynputHotkeyListener(HotkeyListener):
                     # no _dispatch_release needed here.
                     self._ptt_press_dispatched = False
                     self._ptt_dispatched_binding_id = None
+                    self._active_action = None
                 else:
                     self.dispatch_release(binding.binding)
 
