@@ -225,7 +225,7 @@ class AssemblyAITranscriber(Transcriber):
             with contextlib.suppress(Exception):
                 client.disconnect(terminate=True)
 
-    def start(self) -> None:
+    def start(self, language: str | None = None) -> None:
         """Start mic capture and streaming to AssemblyAI."""
         # Wait for any in-progress stop() to finish before claiming the slot.
         # This prevents "Too many concurrent sessions" from AssemblyAI.
@@ -272,8 +272,9 @@ class AssemblyAITranscriber(Transcriber):
         }
         if self._config.keyterms_prompt:
             params_kwargs["keyterms_prompt"] = self._config.keyterms_prompt
-        if self._config.language and self._config.language != "en":
-            params_kwargs["language_code"] = self._config.language
+        effective_language = language or self._config.language
+        if effective_language and effective_language != "en":
+            params_kwargs["language_code"] = effective_language
         params: Any = _v3.StreamingParameters(**params_kwargs)
         logger.info(
             "StreamingParameters: sample_rate=%d, format_turns=%s,"
@@ -282,7 +283,7 @@ class AssemblyAITranscriber(Transcriber):
             self._config.format_turns,
             "pcm_s16le",
             self._config.keyterms_prompt or [],
-            self._config.language,
+            effective_language,
         )
         # Open the mic stream BEFORE connecting so that audio captured during
         # the WebSocket handshake (~200-500 ms) is buffered in the queue and

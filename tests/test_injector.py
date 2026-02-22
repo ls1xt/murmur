@@ -27,6 +27,7 @@ def _mock_which(mocker: Any) -> Any:
     )
 
 
+@pytest.mark.linux_only
 class TestYdotoolInjector:
     """Test YdotoolInjector with mocked subprocess."""
 
@@ -103,6 +104,7 @@ class TestYdotoolInjector:
         assert injector.is_available() is False
 
 
+@pytest.mark.linux_only
 class TestInjectRawAndBackspaces:
     """Test inject_raw and inject_backspaces methods."""
 
@@ -177,6 +179,7 @@ class TestInjectRawAndBackspaces:
         mock_run.assert_not_called()
 
 
+@pytest.mark.linux_only
 class TestClipboardStrategy:
     """Test clipboard injection strategy."""
 
@@ -231,6 +234,7 @@ class TestClipboardStrategy:
         assert "wl-copy" in call_msg
 
 
+@pytest.mark.linux_only
 class TestClipboardFallbackStrategy:
     """Test clipboard-fallback injection strategy."""
 
@@ -281,6 +285,7 @@ class TestClipboardFallbackStrategy:
         assert "wl-copy" in wl_copy_args[0]
 
 
+@pytest.mark.linux_only
 class TestInjectRawStrategyRouting:
     """Test that inject_raw routes through the configured strategy."""
 
@@ -366,6 +371,7 @@ class TestSanitizeText:
         assert injected_text == "helloworld"
 
 
+@pytest.mark.linux_only
 class TestCopyToClipboard:
     """Test copy_to_clipboard method."""
 

@@ -61,6 +61,11 @@ class TestAssemblyAITranscriber:
             "murmur.transcriber.assemblyai.threading.Thread",
             return_value=mock_thread,
         )
+        # Mock _CallbackMicStream to avoid real PortAudio/sounddevice access
+        mocker.patch(
+            "murmur.transcriber.assemblyai._CallbackMicStream",
+            return_value=MagicMock(),
+        )
         return mock_v3
 
     def test_missing_api_key_raises(self) -> None:
@@ -213,7 +218,7 @@ class TestAssemblyAIErrorHandling:
 
         config = TranscriberConfig(api_key="test_key")
         transcriber = AssemblyAITranscriber(config)
-        transcriber._on_stream_error(MagicMock(), "some error")
+        transcriber._on_stream_error(MagicMock(), "some error", transcriber._session_gen)
 
         mock_fatal.assert_called_once()
         call_msg: str = mock_fatal.call_args[0][0]
@@ -227,7 +232,7 @@ class TestAssemblyAIErrorHandling:
 
         config = TranscriberConfig(api_key="test_key")
         transcriber = AssemblyAITranscriber(config)
-        transcriber._on_stream_error(MagicMock(), "Connection closed: 1008")
+        transcriber._on_stream_error(MagicMock(), "Connection closed: 1008", transcriber._session_gen)
 
         mock_fatal.assert_called_once()
         call_msg: str = mock_fatal.call_args[0][0]
@@ -242,30 +247,36 @@ class TestAssemblyAIErrorHandling:
 
         config = TranscriberConfig(api_key="test_key")
         transcriber = AssemblyAITranscriber(config)
-        transcriber._on_stream_error(MagicMock(), "Session error: 3005")
+        transcriber._on_stream_error(MagicMock(), "Session error: 3005", transcriber._session_gen)
 
         mock_fatal.assert_called_once()
         call_msg: str = mock_fatal.call_args[0][0]
         assert "session expired" in call_msg
         assert "3005" in call_msg
 
-    def test_unexpected_termination_calls_fatal(self, mocker: Any) -> None:
+    def test_unexpected_termination_spawns_reconnect(self, mocker: Any) -> None:
         from murmur.transcriber.assemblyai import AssemblyAITranscriber
 
         self._mock_v3(mocker)
-        mock_fatal = mocker.patch("murmur.transcriber.assemblyai.fatal_from_thread")
 
         config = TranscriberConfig(api_key="test_key")
         transcriber = AssemblyAITranscriber(config)
         transcriber.start()
+
+        # Replace thread mock so we can inspect the reconnect call specifically
+        mock_thread_cls = mocker.patch("murmur.transcriber.assemblyai.threading.Thread")
+        mock_thread = MagicMock()
+        mock_thread_cls.return_value = mock_thread
+
         # is_streaming is True -- unexpected termination
         mock_event = MagicMock()
         mock_event.audio_duration_seconds = 5.0
-        transcriber._on_terminated(MagicMock(), mock_event)
+        transcriber._on_terminated(MagicMock(), mock_event, transcriber._session_gen)
 
-        mock_fatal.assert_called_once()
-        call_msg: str = mock_fatal.call_args[0][0]
-        assert "connection lost" in call_msg.lower()
+        # Should have spawned a reconnect thread
+        mock_thread_cls.assert_called_once()
+        assert mock_thread_cls.call_args.kwargs.get("target") == transcriber._reconnect
+        mock_thread.start.assert_called_once()
 
     def test_normal_termination_does_not_call_fatal(self, mocker: Any) -> None:
         from murmur.transcriber.assemblyai import AssemblyAITranscriber
@@ -280,7 +291,7 @@ class TestAssemblyAIErrorHandling:
         # is_streaming is now False -- normal termination
         mock_event = MagicMock()
         mock_event.audio_duration_seconds = 5.0
-        transcriber._on_terminated(MagicMock(), mock_event)
+        transcriber._on_terminated(MagicMock(), mock_event, transcriber._session_gen)
 
         mock_fatal.assert_not_called()
 

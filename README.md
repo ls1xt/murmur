@@ -5,6 +5,16 @@
 Push-to-talk dictation that works in **any application** on Linux (Wayland) and macOS.
 Hold a hotkey, speak, release — your words appear at the cursor.
 
+**Features:**
+- Multiple independent hotkey bindings — push-to-talk, toggle, clipboard, per-binding language
+- Per-binding language — one key for English, another for German, 90+ languages via AssemblyAI
+- Per-binding injection target — dictate into a fixed tmux pane regardless of window focus
+- `append_enter` — automatically submit after injection (great for CLI and chat)
+- Hot config reload — edit `~/.config/murmur/config.json` live, no daemon restart needed
+- Single config for Linux + macOS — `KEY_LEFTALT` auto-remaps to Cmd on macOS
+- Locale-aware default language — reads `$LANG`/`$LC_ALL` if no language is configured
+- Audio feedback beeps, system tray icon, desktop notifications
+
 ## Installation
 
 ### macOS
@@ -122,7 +132,7 @@ sudo usermod -aG input $USER
 
 ## Configuration
 
-Config is stored at `~/.config/murmur/config.json`.
+Config is stored at `~/.config/murmur/config.json`. The daemon hot-reloads it on the next keypress — no restart needed.
 
 ```bash
 murmur config                                       # view all settings
@@ -139,6 +149,68 @@ Or set the API key via environment variable:
 ```bash
 export ASSEMBLYAI_API_KEY=your_key_here
 murmur record
+```
+
+### Hotkey Bindings
+
+Each binding is independent and fully configurable. Per-binding fields:
+
+| Field | Default | Description |
+|---|---|---|
+| `modifiers` | `[]` | Modifier keys (e.g. `["KEY_LEFTCTRL", "KEY_LEFTMETA"]`) |
+| `trigger` | — | Trigger key (e.g. `"KEY_F12"`) |
+| `action` | `"push_to_talk"` | `push_to_talk`, `toggle`, `copy_to_clipboard` |
+| `language` | `null` | Language override for this binding (e.g. `"de"`, `"en_au"`) |
+| `inject_to` | `"default"` | `"default"` (focused window) or `"tmux:SESSION:WINDOW.PANE"` |
+| `append_enter` | `false` | Send Return keystroke after injection |
+| `suppress` | `false` | Swallow the key event (prevents it reaching other apps) |
+
+**Example — multi-language + tmux setup:**
+
+```json
+{
+  "hotkey": {
+    "bindings": [
+      {
+        "modifiers": [], "trigger": "KEY_F12",
+        "action": "push_to_talk", "suppress": true
+      },
+      {
+        "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTALT"], "trigger": "KEY_M",
+        "action": "toggle"
+      },
+      {
+        "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTALT"], "trigger": "KEY_K",
+        "action": "push_to_talk", "language": "de"
+      },
+      {
+        "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTALT"], "trigger": "KEY_T",
+        "action": "push_to_talk",
+        "inject_to": "tmux:todo:0.0",
+        "append_enter": true
+      }
+    ]
+  }
+}
+```
+
+On macOS, `KEY_LEFTALT` is automatically remapped to `KEY_LEFTMETA` (Cmd) at load time, so the same config works on both platforms.
+
+**Supported languages:** 90+ via AssemblyAI — `en`, `en_au`, `en_uk`, `en_us`, `de`, `fr`, `es`, `it`, `pt`, `nl`, `ja`, `zh`, `ko`, `ru`, `ar`, `hi`, and [many more](https://www.assemblyai.com/docs/speech-to-text/streaming).
+
+If no language is set, murmur reads `$LANG`/`$LC_ALL` from your environment as a fallback.
+
+### Dictating into a tmux pane
+
+Bind a key to `inject_to: "tmux:SESSION:WINDOW.PANE"` to always send transcription to a specific pane — regardless of which window is focused. Combine with `append_enter: true` to auto-submit each utterance.
+
+Example — a voice-driven todo log with Claude Code:
+
+```bash
+# Start a persistent todo session
+./scripts/todo-session.sh
+
+# Now Ctrl+Alt+T (or Ctrl+Cmd+T on macOS) dictates directly into Claude
 ```
 
 ## Troubleshooting
@@ -170,11 +242,12 @@ Grant Accessibility permissions: System Settings → Privacy & Security → Acce
 murmur/
 ├── main.py              # CLI entry point (config, record, daemon subcommands)
 ├── app.py               # DictationApp — hotkey → transcriber → injector pipeline
-├── config.py            # Dataclass-based configuration
+├── config.py            # Dataclass-based configuration with hot-reload
+├── language.py          # Language enum (90+ codes) + locale detection
 ├── setup_wizard.py      # First-run setup (GUI or terminal)
 ├── hotkey/              # evdev (Linux) or pynput (macOS) listeners
 ├── transcriber/         # AssemblyAI streaming transcription
-├── injector/            # ydotool (Linux) or pynput (macOS) text injection
+├── injector/            # ydotool / pynput / CGEvent / tmux text injection
 └── feedback/            # Audio feedback, desktop notifications, tray icon
 ```
 

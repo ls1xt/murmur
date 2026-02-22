@@ -27,14 +27,23 @@ class TestHotkeyListenerBase:
 
         return StubListener()
 
+    def _binding(self, action: str) -> HotkeyBinding:
+        """Create a HotkeyBinding with the given action for dispatch tests."""
+        return HotkeyBinding(
+            modifiers=["KEY_LEFTCTRL"],
+            trigger="KEY_SPACE",
+            action=action,
+        )
+
     def test_push_to_talk_activate_on_dispatch(self) -> None:
         listener = self._make_listener()
         on_activate = MagicMock()
         on_deactivate = MagicMock()
         listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
 
-        listener._dispatch_action("push_to_talk")
-        on_activate.assert_called_once_with("push_to_talk")
+        binding = self._binding("push_to_talk")
+        listener._dispatch_action(binding)
+        on_activate.assert_called_once_with(binding)
         on_deactivate.assert_not_called()
 
     def test_push_to_talk_deactivate_on_release(self) -> None:
@@ -43,55 +52,39 @@ class TestHotkeyListenerBase:
         on_deactivate = MagicMock()
         listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
 
-        listener._dispatch_release("push_to_talk")
+        binding = self._binding("push_to_talk")
+        listener._dispatch_release(binding)
         on_deactivate.assert_called_once()
         on_activate.assert_not_called()
 
-    def test_toggle_start_activates(self) -> None:
+    def test_toggle_activates(self) -> None:
         listener = self._make_listener()
         on_activate = MagicMock()
         on_deactivate = MagicMock()
         listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
 
-        listener._dispatch_action("toggle_start")
-        on_activate.assert_called_once_with("toggle_start")
+        binding = self._binding("toggle")
+        listener._dispatch_action(binding)
+        on_activate.assert_called_once_with(binding)
         on_deactivate.assert_not_called()
 
-    def test_toggle_stop_deactivates(self) -> None:
+    def test_toggle_release_is_noop(self) -> None:
         listener = self._make_listener()
         on_activate = MagicMock()
         on_deactivate = MagicMock()
         listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
 
-        listener._dispatch_action("toggle_stop")
-        on_deactivate.assert_called_once()
-        on_activate.assert_not_called()
-
-    def test_toggle_start_release_is_noop(self) -> None:
-        listener = self._make_listener()
-        on_activate = MagicMock()
-        on_deactivate = MagicMock()
-        listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
-
-        listener._dispatch_release("toggle_start")
-        on_activate.assert_not_called()
-        on_deactivate.assert_not_called()
-
-    def test_toggle_stop_release_is_noop(self) -> None:
-        listener = self._make_listener()
-        on_activate = MagicMock()
-        on_deactivate = MagicMock()
-        listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
-
-        listener._dispatch_release("toggle_stop")
+        binding = self._binding("toggle")
+        listener._dispatch_release(binding)
         on_activate.assert_not_called()
         on_deactivate.assert_not_called()
 
     def test_no_callbacks_does_not_crash(self) -> None:
         listener = self._make_listener()
         # No callbacks set -- should not raise
-        listener._dispatch_action("push_to_talk")
-        listener._dispatch_release("push_to_talk")
+        binding = self._binding("push_to_talk")
+        listener._dispatch_action(binding)
+        listener._dispatch_release(binding)
 
     def test_copy_to_clipboard_activate_on_dispatch(self) -> None:
         listener = self._make_listener()
@@ -99,8 +92,9 @@ class TestHotkeyListenerBase:
         on_deactivate = MagicMock()
         listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
 
-        listener._dispatch_action("copy_to_clipboard")
-        on_activate.assert_called_once_with("copy_to_clipboard")
+        binding = self._binding("copy_to_clipboard")
+        listener._dispatch_action(binding)
+        on_activate.assert_called_once_with(binding)
         on_deactivate.assert_not_called()
 
     def test_copy_to_clipboard_deactivate_on_release(self) -> None:
@@ -109,11 +103,13 @@ class TestHotkeyListenerBase:
         on_deactivate = MagicMock()
         listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
 
-        listener._dispatch_release("copy_to_clipboard")
+        binding = self._binding("copy_to_clipboard")
+        listener._dispatch_release(binding)
         on_deactivate.assert_called_once()
         on_activate.assert_not_called()
 
 
+@pytest.mark.linux_only
 class TestEvdevHotkeyListener:
     """Test EvdevHotkeyListener with mocked evdev."""
 
@@ -153,7 +149,11 @@ class TestEvdevHotkeyListener:
         mocker.patch("murmur.hotkey.evdev.categorize", return_value=key_event)
 
         listener._handle_key_event(event, None)
-        on_activate.assert_called_once_with("push_to_talk")
+        # on_activate should be called with a HotkeyBinding whose action is push_to_talk
+        on_activate.assert_called_once()
+        called_binding = on_activate.call_args[0][0]
+        assert isinstance(called_binding, HotkeyBinding)
+        assert called_binding.action == "push_to_talk"
 
     def test_push_to_talk_deactivates_on_release(self, mocker: Any) -> None:
         from murmur.hotkey.evdev import EvdevHotkeyListener, _ecodes_dict
@@ -361,7 +361,7 @@ class TestEvdevHotkeyListener:
             HotkeyBinding(
                 modifiers=["KEY_LEFTCTRL", "KEY_LEFTALT"],
                 trigger="KEY_K",
-                action="toggle_start",
+                action="toggle",
             ),
         ]
 
@@ -378,7 +378,7 @@ class TestEvdevHotkeyListener:
         listener._held_keys.add(ctrl_code)
         listener._held_keys.add(alt_code)
 
-        # Press K -> toggle_start -> activate
+        # Press K -> toggle -> activate
         event = MagicMock()
         event.code = k_code
         key_event = MagicMock()
@@ -386,7 +386,10 @@ class TestEvdevHotkeyListener:
         mocker.patch("murmur.hotkey.evdev.categorize", return_value=key_event)
 
         listener._handle_key_event(event, None)
-        on_activate.assert_called_once_with("toggle_start")
+        on_activate.assert_called_once()
+        called_binding = on_activate.call_args[0][0]
+        assert isinstance(called_binding, HotkeyBinding)
+        assert called_binding.action == "toggle"
 
     @pytest.mark.hardware()
     def test_real_keyboard_detection(self) -> None:

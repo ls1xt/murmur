@@ -42,7 +42,7 @@ class Transcriber(ABC):
         return self._is_streaming
 
     @abstractmethod
-    def start(self) -> None:
+    def start(self, language: str | None = None) -> None:
         """Start streaming audio and transcribing."""
         ...
 

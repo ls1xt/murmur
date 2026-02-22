@@ -145,6 +145,30 @@ class YdotoolInjector(TextInjector):
             # "ydotool" strategy
             self._inject_via_ydotool_raw(text)
 
+    def inject_return(self) -> None:
+        """Inject a Return/Enter keypress via ydotool.
+
+        Uses Linux keycode 28 (KEY_ENTER).
+        """
+        cmd = [self._ydotool_path, "key", "--key-delay", "0", "28:1", "28:0"]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                logger.error(
+                    "ydotool return failed (rc=%d): %s",
+                    result.returncode,
+                    result.stderr.strip(),
+                )
+        except subprocess.TimeoutExpired:
+            logger.error("ydotool return timed out")
+        except FileNotFoundError:
+            logger.error("ydotool not found at %s", self._ydotool_path)
+
     def inject_backspaces(self, count: int) -> None:
         """Inject N backspace keypresses to erase previous text.
 

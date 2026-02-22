@@ -60,6 +60,12 @@ def pytest_collection_modifyitems(
             if item.get_closest_marker("requires_virtual_mic"):
                 item.add_marker(skip_virtual_mic)
 
+    for item in items:
+        if item.get_closest_marker("linux_only") and sys.platform != "linux":
+            item.add_marker(pytest.mark.skip(reason="Linux only"))
+        if item.get_closest_marker("macos_only") and sys.platform != "darwin":
+            item.add_marker(pytest.mark.skip(reason="macOS only"))
+
 
 @pytest.fixture()
 def default_config() -> DictationConfig:

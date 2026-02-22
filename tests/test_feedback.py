@@ -25,12 +25,14 @@ class TestAudioFeedback:
 
         fb = AudioFeedback(enabled=True)
         fb._enabled = True
+        fb._start_wav = None  # force threading path (skip macOS afplay branch)
         fb.play_start()
 
         mock_thread_cls.assert_called_once()
         mock_thread.start.assert_called_once()
         call_args = mock_thread_cls.call_args
-        assert call_args.kwargs["args"] == (440.0, 0.1)
+        # args: (start_hz, duration_s, amplitude)
+        assert call_args.kwargs["args"] == (440.0, 0.1, 0.3)
 
     def test_enabled_plays_stop_synchronous(self, mocker: Any) -> None:
         """play_stop calls _play_tone directly (blocking, no thread)."""
@@ -40,7 +42,7 @@ class TestAudioFeedback:
         fb._enabled = True
         fb.play_stop()
 
-        mock_play.assert_called_once_with(880.0, 0.1)
+        mock_play.assert_called_once_with(880.0, 0.1, 0.3)
 
     def test_play_tone_noop_on_error(self, mocker: Any) -> None:
         """_play_tone is a no-op (logs warning) when sounddevice raises."""

@@ -15,7 +15,7 @@ import threading
 import time
 import types
 
-from murmur.config import DictationConfig
+from murmur.config import CONFIG_FILE, DictationConfig, HotkeyBinding
 from murmur.errors import fatal
 from murmur.feedback.audio import AudioFeedback
 from murmur.feedback.notify import Notifier
@@ -69,6 +69,12 @@ class DictationApp:
         self._recording_active: bool = False  # set synchronously in _on_activate/_on_deactivate
         self._last_deactivate_time: float = 0.0  # monotonic time of last deactivation
 
+        # Config hot-reload: track mtime so we can reload on next activation
+        try:
+            self._config_mtime: float = CONFIG_FILE.stat().st_mtime
+        except OSError:
+            self._config_mtime = 0.0
+
         self.hotkey: HotkeyListener = create_hotkey_listener(config.hotkey)
         self.transcriber: Transcriber = create_transcriber(config.transcriber)
         self.injector: TextInjector = create_injector(config.injector)
@@ -86,6 +92,12 @@ class DictationApp:
             on_activate=self._on_tray_activate,
         )
 
+        # Per-binding injectors: tmux bindings get their own TmuxInjector;
+        # all others share the default self.injector.
+        self._binding_injectors: dict[int, TextInjector] = self._build_binding_injectors()
+        self._active_injector: TextInjector = self.injector
+        self._active_binding: HotkeyBinding | None = None
+
         self.hotkey.set_callbacks(
             on_activate=self._on_activate,
             on_deactivate=self._on_deactivate,
@@ -96,13 +108,64 @@ class DictationApp:
             on_error=self._on_transcriber_error,
         )
 
-    def _on_activate(self, action: str, trigger: str = "hotkey") -> None:
+    def _build_binding_injectors(self) -> dict[int, TextInjector]:
+        """Build a per-binding injector map.
+
+        Bindings with ``inject_to="tmux:TARGET"`` get a dedicated
+        ``TmuxInjector``; all others map to the shared default injector.
+        """
+        from murmur.injector.tmux import TmuxInjector
+
+        injectors: dict[int, TextInjector] = {}
+        for binding in self.config.hotkey.bindings:
+            if binding.inject_to.startswith("tmux:"):
+                target = binding.inject_to.removeprefix("tmux:")
+                injectors[id(binding)] = TmuxInjector(
+                    target=target,
+                    trailing_space=self.config.injector.trailing_space,
+                )
+            else:
+                injectors[id(binding)] = self.injector
+        return injectors
+
+    def _maybe_reload_config(self) -> None:
+        """Reload config from disk if the file has been modified since last check."""
+        try:
+            mtime = CONFIG_FILE.stat().st_mtime
+            if mtime == self._config_mtime:
+                return
+            self._config_mtime = mtime
+        except OSError:
+            return
+        try:
+            new_config = DictationConfig.load()
+        except Exception as e:
+            logger.warning("Config reload failed: %s", e)
+            return
+        logger.info("Config changed on disk, reloading...")
+        self.config = new_config
+        # Rebuild binding injectors with new config
+        self._binding_injectors = self._build_binding_injectors()
+        # Restart hotkey listener with new bindings
+        self.hotkey.stop()
+        self.hotkey = create_hotkey_listener(new_config.hotkey)
+        self.hotkey.set_callbacks(
+            on_activate=self._on_activate,
+            on_deactivate=self._on_deactivate,
+        )
+        self.hotkey.start()
+
+    def _on_activate(self, binding: HotkeyBinding, trigger: str = "hotkey") -> None:
         """Called when the hotkey is activated (start recording).
 
-        ``action`` is one of "push_to_talk", "toggle_start", or
+        ``binding`` is the full HotkeyBinding that was triggered.
+        ``binding.action`` is one of "push_to_talk", "toggle", or
         "copy_to_clipboard" and determines what happens to the transcript.
         ``trigger`` is "hotkey" or "tray" and indicates what triggered recording.
         """
+        self._maybe_reload_config()
+
+        action = binding.action
         if action == "toggle":
             with self._lock:
                 should_stop = self._recording_active
@@ -123,12 +186,19 @@ class DictationApp:
             self._clipboard_mode = action == "copy_to_clipboard"
             self._clipboard_buffer = []
             self._session_id += 1
+            self._active_binding = binding
+            self._active_injector = self._binding_injectors.get(id(binding), self.injector)
         _session_var.set(self._session_id)
-        logger.info("Recording started (trigger=%s action=%s)", trigger, action)
+        from murmur.language import resolve_language
+        lang = resolve_language(binding.language)
+        logger.info(
+            "Recording started (trigger=%s action=%s language=%s inject_to=%s)",
+            trigger, action, lang or self.config.transcriber.language, binding.inject_to,
+        )
         self.feedback.play_start()
         self.notifier.info("Recording started")
         self.tray.set_state("recording")
-        threading.Thread(target=self.transcriber.start, daemon=True).start()
+        threading.Thread(target=self.transcriber.start, args=(lang,), daemon=True).start()
 
     def _on_deactivate(self) -> None:
         """Called when the hotkey is deactivated (stop recording)."""
@@ -152,8 +222,16 @@ class DictationApp:
         callbacks have already fired and _clipboard_buffer is complete.
         """
         clipboard_mode = self._clipboard_mode
+        active_binding = self._active_binding
+        active_injector = self._active_injector
         self.transcriber.stop()
         if not clipboard_mode:
+            # Append Enter if requested by this binding
+            if active_binding is not None and active_binding.append_enter:
+                try:
+                    active_injector.inject_return()
+                except Exception as e:
+                    logger.error("inject_return failed: %s", e)
             return
         with self._inject_lock:
             full_text = " ".join(self._clipboard_buffer).strip()
@@ -193,10 +271,10 @@ class DictationApp:
         )
         with self._inject_lock:
             if text.startswith(self._last_partial):
-                suffix = text[len(self._last_partial) :]
+                suffix = text[len(self._last_partial):]
                 if suffix:
                     logger.info("Injecting delta suffix: %r", suffix[:80])
-                    self.injector.inject_raw(suffix)
+                    self._active_injector.inject_raw(suffix)
                 else:
                     logger.debug("Partial unchanged, no delta to inject")
             else:
@@ -206,8 +284,8 @@ class DictationApp:
                     text[:80],
                 )
                 if self._last_partial:
-                    self.injector.inject_backspaces(len(self._last_partial))
-                self.injector.inject_raw(text)
+                    self._active_injector.inject_backspaces(len(self._last_partial))
+                self._active_injector.inject_raw(text)
             self._last_partial = text
 
     def _on_final_transcript(self, text: str) -> None:
@@ -232,7 +310,7 @@ class DictationApp:
                     "Backspacing %d partial chars before final inject",
                     len(self._last_partial),
                 )
-                self.injector.inject_backspaces(len(self._last_partial))
+                self._active_injector.inject_backspaces(len(self._last_partial))
                 self._last_partial = ""
             if not text.strip():
                 logger.info("Final text was empty/whitespace, skipping")
@@ -243,7 +321,7 @@ class DictationApp:
                 return
             logger.info("Injecting final: %s", text)
             try:
-                self.injector.inject(text)
+                self._active_injector.inject(text)
             except Exception as e:
                 logger.error("Text injection failed: %s", e)
 
@@ -274,13 +352,13 @@ class DictationApp:
             if not check_accessibility():
                 fatal(
                     "Accessibility permission required for keyboard monitoring.\n"
-                    "Go to System Settings → Privacy & Security → Accessibility\n"
+                    "Go to System Settings -> Privacy & Security -> Accessibility\n"
                     "and enable Terminal (or your Python interpreter)."
                 )
             if not check_microphone():
                 fatal(
                     "Microphone permission required for audio capture.\n"
-                    "Go to System Settings → Privacy & Security → Microphone\n"
+                    "Go to System Settings -> Privacy & Security -> Microphone\n"
                     "and enable Terminal (or your Python interpreter)."
                 )
         elif not self.injector.is_available():
@@ -288,18 +366,32 @@ class DictationApp:
                 "ydotoold is not running. Start it with: systemctl --user start ydotool"
             )
 
+        if sys.platform == "darwin":
+            _fkey = {f"KEY_F{i}" for i in range(1, 25)}
+            for b in self.config.hotkey.bindings:
+                if b.action in ("push_to_talk", "copy_to_clipboard") and b.trigger not in _fkey and not b.suppress:
+                    logger.warning(
+                        "Binding %s (%s) has suppress=false on macOS: "
+                        "the key character will type into the active app while held. "
+                        'Set "suppress": true to prevent this.',
+                        b.trigger, b.action,
+                    )
+
         print(f"\n{'=' * 60}")
         print("  Dictation Tool Ready")
         print(f"  Engine:  {self.config.transcriber.backend}")
         print(f"  Inject:  {self.config.injector.backend}")
         print(f"{'=' * 60}")
         for binding in self.config.hotkey.bindings:
-            combo = f"{'+'.join(binding.modifiers)}+{binding.trigger}"
-            if binding.action == "tmux_send_keys":
-                label = f"Tmux send {binding.tmux_keys!r} -> {binding.tmux_target}"
-            else:
-                label = binding.action.replace("_", " ").title()
-            print(f"  {combo}  ->  {label}")
+            combo = "+".join(binding.modifiers + [binding.trigger]) if binding.modifiers else binding.trigger
+            parts = [binding.action.replace("_", " ").title()]
+            if binding.language:
+                parts.append(f"lang={binding.language}")
+            if binding.inject_to != "default":
+                parts.append(f"-> {binding.inject_to}")
+            if binding.append_enter:
+                parts.append("+Enter")
+            print(f"  {combo}  ->  {', '.join(parts)}")
         print("  Press Ctrl+C to quit.\n")
 
         self.notifier.info("Murmur started")
@@ -335,7 +427,12 @@ class DictationApp:
         if active:
             self._on_deactivate()
         else:
-            self._on_activate("push_to_talk", trigger="tray")
+            # Use first push_to_talk binding, or a synthetic default
+            binding = next(
+                (b for b in self.config.hotkey.bindings if b.action == "push_to_talk"),
+                HotkeyBinding(action="push_to_talk"),
+            )
+            self._on_activate(binding, trigger="tray")
 
     def _request_shutdown(self) -> None:
         """Request daemon shutdown (e.g., from tray Quit menu)."""

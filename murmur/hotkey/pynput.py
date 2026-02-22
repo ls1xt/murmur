@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pynput import keyboard
 from pynput.keyboard import Key, KeyCode
@@ -157,8 +157,7 @@ class _ResolvedBinding:
     trigger: Key | KeyCode
     trigger_vk: int | None  # macOS CGEvent keycode; None if unknown
     action: str
-    tmux_target: str = ""
-    tmux_keys: str = ""
+    binding: HotkeyBinding = field(default_factory=HotkeyBinding)
     suppress: bool = False
 
 
@@ -199,8 +198,7 @@ def _resolve_bindings(bindings: list[HotkeyBinding]) -> list[_ResolvedBinding]:
                 trigger=trigger_key,
                 trigger_vk=trigger_vk,
                 action=binding.action,
-                tmux_target=binding.tmux_target,
-                tmux_keys=binding.tmux_keys,
+                binding=binding,
                 suppress=binding.suppress,
             )
         )
@@ -301,8 +299,7 @@ class PynputHotkeyListener(HotkeyListener):
                 trigger=self._listener.canonical(b.trigger),
                 trigger_vk=b.trigger_vk,  # preserved from _resolve_bindings
                 action=b.action,
-                tmux_target=b.tmux_target,
-                tmux_keys=b.tmux_keys,
+                binding=b.binding,
                 suppress=b.suppress,
             )
             for b in self._bindings
@@ -430,11 +427,7 @@ class PynputHotkeyListener(HotkeyListener):
                 )
                 if binding.action in ("push_to_talk", "copy_to_clipboard", "toggle"):
                     self._ptt_press_dispatched = True
-                self._dispatch_action(
-                    binding.action,
-                    binding.tmux_target,
-                    binding.tmux_keys,
-                )
+                self._dispatch_action(binding.binding)
 
     def _on_release(self, key: Key | KeyCode | None, injected: bool = False) -> None:
         """Handle a key-release event.
@@ -486,7 +479,7 @@ class PynputHotkeyListener(HotkeyListener):
                         )
                         continue
                     self._ptt_press_dispatched = False
-                    self._dispatch_release(binding.action)
+                    self._dispatch_release(binding.binding)
                     # Set debounce timestamp AFTER dispatch returns.
                     # _dispatch_release calls _on_deactivate which calls
                     # feedback.play_stop() -- a blocking ~100 ms beep.
@@ -500,7 +493,7 @@ class PynputHotkeyListener(HotkeyListener):
                     # no _dispatch_release needed here.
                     self._ptt_press_dispatched = False
                 else:
-                    self._dispatch_release(binding.action)
+                    self._dispatch_release(binding.binding)
 
         self._held.discard(canonical)
         if raw_vk is not None:

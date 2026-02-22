@@ -126,6 +126,11 @@ class PynputInjector(TextInjector):
             self._controller.press(keyboard.Key.backspace)
             self._controller.release(keyboard.Key.backspace)
 
+    def inject_return(self) -> None:
+        """Press and release the Return/Enter key."""
+        self._controller.press(keyboard.Key.enter)
+        self._controller.release(keyboard.Key.enter)
+
     def copy_to_clipboard(self, text: str) -> None:
         """Copy text to the macOS clipboard via pbcopy (no paste keystroke).
 

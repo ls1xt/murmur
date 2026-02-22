@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 # Value 0x33 is fixed in the macOS keyboard layout and does not change.
 _VK_DELETE: int = 0x33
 
+# kVK_Return -- the main Return/Enter key.
+# Value 0x24 is fixed in the macOS keyboard layout and does not change.
+_VK_RETURN: int = 0x24
+
 
 def _sanitize_text(text: str) -> str:
     """Strip control characters before injection.
@@ -127,6 +131,16 @@ class CGEventInjector(TextInjector):
             CGEventPost(kCGSessionEventTap, e_up)
             if self._key_delay_s > 0:
                 time.sleep(self._key_delay_s)
+
+    def inject_return(self) -> None:
+        """Inject a Return/Enter keypress using the real kVK_Return keycode."""
+        from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGSessionEventTap
+
+        source = self._get_source()
+        e_dn = CGEventCreateKeyboardEvent(source, _VK_RETURN, True)
+        CGEventPost(kCGSessionEventTap, e_dn)
+        e_up = CGEventCreateKeyboardEvent(source, _VK_RETURN, False)
+        CGEventPost(kCGSessionEventTap, e_up)
 
     def copy_to_clipboard(self, text: str) -> None:
         """Copy text to the macOS clipboard via pbcopy (no paste keystroke)."""

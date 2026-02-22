@@ -15,7 +15,7 @@ import contextlib
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import evdev  # type: ignore[import-untyped]
@@ -96,8 +96,7 @@ class _ResolvedBinding:
     modifier_codes: set[int]
     trigger_code: int
     action: str
-    tmux_target: str = ""
-    tmux_keys: str = ""
+    binding: HotkeyBinding = field(default_factory=HotkeyBinding)
 
 
 class EvdevHotkeyListener(HotkeyListener):
@@ -140,8 +139,7 @@ class EvdevHotkeyListener(HotkeyListener):
                     modifier_codes=mod_codes,
                     trigger_code=trigger_code,
                     action=binding.action,
-                    tmux_target=binding.tmux_target,
-                    tmux_keys=binding.tmux_keys,
+                    binding=binding,
                 )
             )
             self._all_modifier_codes.update(mod_codes)
@@ -265,7 +263,7 @@ class EvdevHotkeyListener(HotkeyListener):
         for code, binding, uinput in expired:
             del self._pending_releases[code]
             self._suppressed_triggers.discard(code)
-            self._dispatch_release(binding.action)
+            self._dispatch_release(binding.binding)
             logger.debug(
                 "Debounce fired: dispatched release for code=%d action=%s",
                 code,
@@ -332,11 +330,7 @@ class EvdevHotkeyListener(HotkeyListener):
                             )
                     uinput.syn()  # type: ignore[reportUnknownMemberType]
 
-                self._dispatch_action(
-                    matched_binding.action,
-                    matched_binding.tmux_target,
-                    matched_binding.tmux_keys,
-                )
+                self._dispatch_action(matched_binding.binding)
             else:
                 # Not a hotkey -- forward the event
                 if uinput is not None:
@@ -372,7 +366,7 @@ class EvdevHotkeyListener(HotkeyListener):
                     else:
                         # Toggle actions: release immediately, no debounce needed.
                         self._suppressed_triggers.discard(code)
-                        self._dispatch_release(released_binding.action)
+                        self._dispatch_release(released_binding.binding)
 
                         # Restore modifiers: re-press those physically held
                         if uinput is not None:

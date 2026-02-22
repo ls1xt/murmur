@@ -96,8 +96,11 @@ class TestStartupValidation:
 
         # Mock transcriber to avoid SDK issues
         mocker.patch("murmur.transcriber.assemblyai._v3")
-        mocker.patch("murmur.main.create_hotkey_listener")
-        mocker.patch("murmur.main.AudioFeedback")
+        mocker.patch("murmur.app.create_hotkey_listener")
+        mocker.patch("murmur.app.AudioFeedback")
+        mocker.patch("murmur.app.TrayIcon")
+        # Force Linux code path so ydotool availability is checked
+        mocker.patch("murmur.app.sys.platform", "linux")
 
         from murmur.main import DictationApp
 

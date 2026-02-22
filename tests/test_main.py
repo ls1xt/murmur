@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from murmur.config import DictationConfig, FeedbackConfig, TrayConfig
+from murmur.config import DictationConfig, FeedbackConfig, HotkeyBinding, TrayConfig
 from murmur.main import DictationApp, main
 
 
@@ -24,8 +24,10 @@ def _make_app(mocker: Any) -> tuple[DictationApp, MagicMock, MagicMock, MagicMoc
     """
     config = DictationConfig()
     config.transcriber.api_key = "fake_key"
+    config.transcriber.inject_partials = True  # enable partial injection for tests
     config.feedback = FeedbackConfig(audio_enabled=False)
     config.tray = TrayConfig(enabled=False)
+    config.hotkey.push_to_talk_debounce_ms = 0  # disable debounce in tests
 
     mock_transcriber = MagicMock()
     mock_transcriber.is_streaming = False
@@ -33,9 +35,9 @@ def _make_app(mocker: Any) -> tuple[DictationApp, MagicMock, MagicMock, MagicMoc
     mock_injector.is_available.return_value = True
     mock_hotkey = MagicMock()
 
-    mocker.patch("murmur.main.create_transcriber", return_value=mock_transcriber)
-    mocker.patch("murmur.main.create_injector", return_value=mock_injector)
-    mocker.patch("murmur.main.create_hotkey_listener", return_value=mock_hotkey)
+    mocker.patch("murmur.app.create_transcriber", return_value=mock_transcriber)
+    mocker.patch("murmur.app.create_injector", return_value=mock_injector)
+    mocker.patch("murmur.app.create_hotkey_listener", return_value=mock_hotkey)
 
     app = DictationApp(config)
     return app, mock_transcriber, mock_injector, mock_hotkey
@@ -53,7 +55,7 @@ class TestConfigSubcommand:
     def test_config_no_args_prints_json(self, mocker: Any, capsys: Any) -> None:
         """murmur config prints full config as valid JSON."""
         config = DictationConfig()
-        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
+        mocker.patch("murmur.config.DictationConfig.load", return_value=config)
         _run_main(["config"], mocker)
         main()
         captured = capsys.readouterr()
@@ -65,7 +67,7 @@ class TestConfigSubcommand:
         """murmur config --key transcriber.api_key prints the value."""
         config = DictationConfig()
         config.transcriber.api_key = "my_test_key"
-        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
+        mocker.patch("murmur.config.DictationConfig.load", return_value=config)
         _run_main(["config", "--key", "transcriber.api_key"], mocker)
         main()
         captured = capsys.readouterr()
@@ -74,7 +76,7 @@ class TestConfigSubcommand:
     def test_config_set_key(self, mocker: Any, capsys: Any) -> None:
         """murmur config --key K --value V saves config and prints confirmation."""
         config = DictationConfig()
-        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
+        mocker.patch("murmur.config.DictationConfig.load", return_value=config)
         mock_save = mocker.patch.object(config, "save")
         _run_main(
             ["config", "--key", "transcriber.api_key", "--value", "new_key"],
@@ -95,7 +97,7 @@ class TestRecordSubcommand:
         """murmur record with no API key raises SystemExit."""
         config = DictationConfig()
         config.transcriber.api_key = ""
-        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
+        mocker.patch("murmur.config.DictationConfig.load", return_value=config)
         # Suppress setup_wizard import
         mocker.patch.dict(
             "sys.modules",
@@ -111,10 +113,10 @@ class TestRecordSubcommand:
         config.transcriber.api_key = "valid_key"
         config.feedback = FeedbackConfig(audio_enabled=False)
         config.tray = TrayConfig(enabled=False)
-        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
-        mocker.patch("murmur.main.create_transcriber", return_value=MagicMock())
-        mocker.patch("murmur.main.create_injector", return_value=MagicMock())
-        mocker.patch("murmur.main.create_hotkey_listener", return_value=MagicMock())
+        mocker.patch("murmur.config.DictationConfig.load", return_value=config)
+        mocker.patch("murmur.app.create_transcriber", return_value=MagicMock())
+        mocker.patch("murmur.app.create_injector", return_value=MagicMock())
+        mocker.patch("murmur.app.create_hotkey_listener", return_value=MagicMock())
         mock_run = mocker.patch.object(DictationApp, "run")
         _run_main(["record"], mocker)
         main()
@@ -126,10 +128,10 @@ class TestRecordSubcommand:
         config.transcriber.api_key = "valid_key"
         config.feedback = FeedbackConfig(audio_enabled=False)
         config.tray = TrayConfig(enabled=False)
-        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
-        mocker.patch("murmur.main.create_transcriber", return_value=MagicMock())
-        mocker.patch("murmur.main.create_injector", return_value=MagicMock())
-        mocker.patch("murmur.main.create_hotkey_listener", return_value=MagicMock())
+        mocker.patch("murmur.config.DictationConfig.load", return_value=config)
+        mocker.patch("murmur.app.create_transcriber", return_value=MagicMock())
+        mocker.patch("murmur.app.create_injector", return_value=MagicMock())
+        mocker.patch("murmur.app.create_hotkey_listener", return_value=MagicMock())
         mocker.patch.object(DictationApp, "run")
         _run_main(["record", "--inject", "clipboard"], mocker)
         main()
@@ -145,7 +147,7 @@ class TestDaemonSubcommand:
         # pgrep returns empty output for both checks
         mock_result = MagicMock()
         mock_result.stdout = ""
-        mocker.patch("murmur.main.subprocess.run", return_value=mock_result)
+        mocker.patch("subprocess.run", return_value=mock_result)
         _run_main(["daemon", "status"], mocker)
         main()
         captured = capsys.readouterr()
@@ -155,7 +157,7 @@ class TestDaemonSubcommand:
         """murmur daemon status prints PID when daemon is found."""
         mock_result = MagicMock()
         mock_result.stdout = "12345\n"
-        mocker.patch("murmur.main.subprocess.run", return_value=mock_result)
+        mocker.patch("subprocess.run", return_value=mock_result)
         _run_main(["daemon", "status"], mocker)
         main()
         captured = capsys.readouterr()
@@ -167,10 +169,10 @@ class TestDaemonSubcommand:
         config.transcriber.api_key = "valid_key"
         config.feedback = FeedbackConfig(audio_enabled=False)
         config.tray = TrayConfig(enabled=False)
-        mocker.patch("murmur.main.DictationConfig.load", return_value=config)
-        mocker.patch("murmur.main.create_transcriber", return_value=MagicMock())
-        mocker.patch("murmur.main.create_injector", return_value=MagicMock())
-        mocker.patch("murmur.main.create_hotkey_listener", return_value=MagicMock())
+        mocker.patch("murmur.config.DictationConfig.load", return_value=config)
+        mocker.patch("murmur.app.create_transcriber", return_value=MagicMock())
+        mocker.patch("murmur.app.create_injector", return_value=MagicMock())
+        mocker.patch("murmur.app.create_hotkey_listener", return_value=MagicMock())
         mock_run = mocker.patch.object(DictationApp, "run")
         _run_main(["daemon", "start"], mocker)
         main()
@@ -184,7 +186,7 @@ class TestDictationAppLifecycle:
     def test_activate_starts_transcription(self, mocker: Any) -> None:
         app, transcriber, _, _ = _make_app(mocker)
 
-        app._on_activate("push_to_talk")
+        app._on_activate(HotkeyBinding(action="push_to_talk"))
 
         time.sleep(0.05)
         transcriber.start.assert_called_once()
@@ -192,25 +194,27 @@ class TestDictationAppLifecycle:
     def test_deactivate_stops_transcription(self, mocker: Any) -> None:
         app, transcriber, _, _ = _make_app(mocker)
 
+        app._recording_active = True
         transcriber.is_streaming = True
         app._on_deactivate()
 
         time.sleep(0.05)
         transcriber.stop.assert_called_once()
 
-    def test_activate_noop_when_already_streaming(self, mocker: Any) -> None:
+    def test_activate_noop_when_already_recording(self, mocker: Any) -> None:
         app, transcriber, _, _ = _make_app(mocker)
 
-        transcriber.is_streaming = True
-        app._on_activate("push_to_talk")
+        # Simulate recording already active
+        app._recording_active = True
+        app._on_activate(HotkeyBinding(action="push_to_talk"))
 
         time.sleep(0.05)
         transcriber.start.assert_not_called()
 
-    def test_deactivate_noop_when_not_streaming(self, mocker: Any) -> None:
+    def test_deactivate_noop_when_not_recording(self, mocker: Any) -> None:
         app, transcriber, _, _ = _make_app(mocker)
 
-        transcriber.is_streaming = False
+        # _recording_active starts False
         app._on_deactivate()
 
         time.sleep(0.05)
@@ -277,11 +281,11 @@ class TestDictationAppLifecycle:
         app, transcriber, _, _ = _make_app(mocker)
 
         for _ in range(3):
-            transcriber.is_streaming = False
-            app._on_activate("push_to_talk")
+            app._recording_active = False
+            app._on_activate(HotkeyBinding(action="push_to_talk"))
             time.sleep(0.05)
 
-            transcriber.is_streaming = True
+            app._recording_active = True
             app._on_deactivate()
             time.sleep(0.05)
 
@@ -314,14 +318,15 @@ class TestClipboardMode:
     def test_activate_clipboard_sets_flag(self, mocker: Any) -> None:
         app, _, _, _ = _make_app(mocker)
 
-        app._on_activate("copy_to_clipboard")
+        app._on_activate(HotkeyBinding(action="copy_to_clipboard"))
         assert app._clipboard_mode is True
 
     def test_activate_push_to_talk_clears_flag(self, mocker: Any) -> None:
         app, _, _, _ = _make_app(mocker)
 
         app._clipboard_mode = True
-        app._on_activate("push_to_talk")
+        app._recording_active = False
+        app._on_activate(HotkeyBinding(action="push_to_talk"))
         assert app._clipboard_mode is False
 
     def test_partial_skipped_in_clipboard_mode(self, mocker: Any) -> None:
@@ -333,36 +338,113 @@ class TestClipboardMode:
         injector.inject_raw.assert_not_called()
         injector.inject_backspaces.assert_not_called()
 
-    def test_final_copies_to_clipboard(self, mocker: Any) -> None:
+    def test_final_buffers_in_clipboard_mode(self, mocker: Any) -> None:
+        """In clipboard mode, _on_final_transcript buffers text, not injects."""
         app, _, injector, _ = _make_app(mocker)
 
         app._clipboard_mode = True
         app._on_final_transcript("Hello world.")
 
-        injector.copy_to_clipboard.assert_called_once_with("Hello world.")
+        # Text is buffered, not injected or copied to clipboard directly
+        assert "Hello world." in app._clipboard_buffer
         injector.inject.assert_not_called()
+        injector.copy_to_clipboard.assert_not_called()
 
-    def test_final_clipboard_resets_flag(self, mocker: Any) -> None:
-        app, _, injector, _ = _make_app(mocker)
-
-        app._clipboard_mode = True
-        app._on_final_transcript("Hello world.")
-
-        assert app._clipboard_mode is False
-
-    def test_final_blank_in_clipboard_mode_skips_copy(self, mocker: Any) -> None:
+    def test_final_blank_in_clipboard_mode_skips_buffer(self, mocker: Any) -> None:
         app, _, injector, _ = _make_app(mocker)
 
         app._clipboard_mode = True
         app._on_final_transcript("   ")
 
+        assert len(app._clipboard_buffer) == 0
         injector.copy_to_clipboard.assert_not_called()
 
     def test_tray_activate_uses_push_to_talk(self, mocker: Any) -> None:
         """Tray left-click always uses push_to_talk, not clipboard mode."""
         app, transcriber, _, _ = _make_app(mocker)
 
-        transcriber.is_streaming = False
+        app._recording_active = False
         app._on_tray_activate()
 
         assert app._clipboard_mode is False
+
+
+class TestAppendEnter:
+    """Test append_enter binding option."""
+
+    def test_append_enter_calls_inject_return(self, mocker: Any) -> None:
+        """When binding.append_enter=True, inject_return is called after transcription."""
+        app, transcriber, injector, _ = _make_app(mocker)
+
+        binding = HotkeyBinding(action="push_to_talk", append_enter=True)
+        app._on_activate(binding)
+        time.sleep(0.05)
+
+        # Manually set active binding state as activate would have done
+        app._active_binding = binding
+        app._active_injector = injector
+
+        # Simulate stop and deliver
+        app._clipboard_mode = False
+        transcriber.stop.return_value = None
+        app._stop_and_deliver()
+
+        injector.inject_return.assert_called_once()
+
+    def test_no_append_enter_does_not_call_inject_return(self, mocker: Any) -> None:
+        """When binding.append_enter=False, inject_return is not called."""
+        app, transcriber, injector, _ = _make_app(mocker)
+
+        binding = HotkeyBinding(action="push_to_talk", append_enter=False)
+        app._active_binding = binding
+        app._active_injector = injector
+        app._clipboard_mode = False
+        transcriber.stop.return_value = None
+        app._stop_and_deliver()
+
+        injector.inject_return.assert_not_called()
+
+
+class TestConfigReload:
+    """Test config hot-reload on activation."""
+
+    def test_maybe_reload_config_no_change(self, mocker: Any) -> None:
+        """No reload when mtime has not changed."""
+        app, _, _, _ = _make_app(mocker)
+
+        # stat returns same mtime — no reload expected
+        mock_stat = MagicMock()
+        mock_stat.st_mtime = app._config_mtime
+        mocker.patch("pathlib.Path.stat", return_value=mock_stat)
+
+        mock_load = mocker.patch.object(DictationConfig, "load")
+        app._maybe_reload_config()
+
+        mock_load.assert_not_called()
+
+    def test_maybe_reload_config_oserror_skips(self, mocker: Any) -> None:
+        """OSError when stat-ing config file is silently ignored."""
+        app, _, _, _ = _make_app(mocker)
+
+        mocker.patch("pathlib.Path.stat", side_effect=OSError("no file"))
+        mock_load = mocker.patch.object(DictationConfig, "load")
+        app._maybe_reload_config()
+
+        mock_load.assert_not_called()
+
+    def test_maybe_reload_config_load_failure_logs_warning(
+        self, mocker: Any
+    ) -> None:
+        """Failed config reload logs a warning and does not crash."""
+        app, _, _, _ = _make_app(mocker)
+
+        # Simulate mtime change
+        mock_stat = MagicMock()
+        mock_stat.st_mtime = app._config_mtime + 1.0
+        mocker.patch("pathlib.Path.stat", return_value=mock_stat)
+        mocker.patch.object(DictationConfig, "load", side_effect=ValueError("bad json"))
+
+        mock_logger = mocker.patch("murmur.app.logger")
+        app._maybe_reload_config()
+
+        mock_logger.warning.assert_called_once()

@@ -16,7 +16,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from murmur.config import DictationConfig, FeedbackConfig, TrayConfig
+from murmur.config import DictationConfig, FeedbackConfig, HotkeyBinding, TrayConfig
 from murmur.injector.base import TextInjector
 from murmur.main import DictationApp
 from murmur.transcriber.assemblyai import AssemblyAITranscriber
@@ -37,6 +37,9 @@ class CapturingInjector(TextInjector):
     def inject_backspaces(self, count: int) -> None:
         pass
 
+    def inject_return(self) -> None:
+        pass
+
     def is_available(self) -> bool:
         return True
 
@@ -53,9 +56,9 @@ def _make_app(
     injector = CapturingInjector()
     transcriber = AssemblyAITranscriber(config.transcriber)
 
-    mocker.patch("murmur.main.create_transcriber", return_value=transcriber)
-    mocker.patch("murmur.main.create_injector", return_value=injector)
-    mocker.patch("murmur.main.create_hotkey_listener", return_value=MagicMock())
+    mocker.patch("murmur.app.create_transcriber", return_value=transcriber)
+    mocker.patch("murmur.app.create_injector", return_value=injector)
+    mocker.patch("murmur.app.create_hotkey_listener", return_value=MagicMock())
 
     # Prevent fatal_from_thread from sending SIGTERM to pytest
     mocker.patch("murmur.transcriber.assemblyai.fatal_from_thread")
@@ -84,7 +87,7 @@ class TestE2ETranscription:
 
         assert not transcriber.is_streaming
 
-        app._on_activate()
+        app._on_activate(HotkeyBinding(action="push_to_talk"))
 
         started = _wait_for(lambda: transcriber.is_streaming)
         assert started, "Transcriber did not start streaming within 10s"
@@ -108,7 +111,7 @@ class TestE2ETranscription:
         app, transcriber, _injector = _make_app(real_api_key, mocker)
         from murmur.transcriber import assemblyai as _aai_mod
 
-        app._on_activate()
+        app._on_activate(HotkeyBinding(action="push_to_talk"))
         _wait_for(lambda: transcriber.is_streaming)
         time.sleep(2.0)
         app._on_deactivate()
@@ -121,7 +124,7 @@ class TestE2ETranscription:
         app, transcriber, _injector = _make_app(real_api_key, mocker)
 
         for _ in range(2):
-            app._on_activate()
+            app._on_activate(HotkeyBinding(action="push_to_talk"))
             assert _wait_for(lambda: transcriber.is_streaming), "Did not start"
             time.sleep(2.0)
             app._on_deactivate()

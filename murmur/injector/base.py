@@ -26,6 +26,15 @@ class TextInjector(ABC):
         ...
 
     @abstractmethod
+    def inject_return(self) -> None:
+        """Inject a Return/Enter keystroke into the target.
+
+        Used by the ``append_enter`` binding option to press Enter once at
+        the end of a dictation session.
+        """
+        ...
+
+    @abstractmethod
     def is_available(self) -> bool:
         """Check if the injection backend is available and ready."""
         ...

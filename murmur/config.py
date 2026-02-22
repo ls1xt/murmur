@@ -22,9 +22,21 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 class HotkeyBinding:
     """A single hotkey binding mapping a key combination to an action.
 
-    For action ``tmux_send_keys``, set ``tmux_target`` to a tmux target pane
-    (e.g. ``"my-session:1.1"`` or ``"0"``) and ``tmux_keys`` to the key
-    sequence to send (e.g. ``"q"`` or ``"Enter"`` or ``"C-c"``).
+    Fields:
+        modifiers: List of modifier key names (e.g. ``["KEY_LEFTCTRL", "KEY_LEFTMETA"]``).
+        trigger: The key name that triggers the action (e.g. ``"KEY_SPACE"``).
+        action: The action to perform (e.g. ``"push_to_talk"``, ``"toggle"``,
+            ``"copy_to_clipboard"``).
+        language: Per-binding language override.  An ISO 639-1 code or
+            AssemblyAI regional variant (e.g. ``"de"``, ``"en_au"``).  When
+            ``None``, the global transcriber language is used.
+        inject_to: Where transcribed text is injected.  ``"default"`` targets
+            the currently active window; ``"tmux:SESSION:WINDOW.PANE"`` sends
+            text to a specific tmux pane.
+        append_enter: When ``True``, a Return key press is sent after the
+            transcription is injected at the end of each session.
+        suppress: When ``True``, installs an active CGEventTap to swallow the
+            key event so it does not reach other applications.
     """
 
     modifiers: list[str] = field(
@@ -32,9 +44,9 @@ class HotkeyBinding:
     )
     trigger: str = "KEY_SPACE"
     action: str = "push_to_talk"
-    # tmux_send_keys fields (only used when action == "tmux_send_keys")
-    tmux_target: str = ""
-    tmux_keys: str = ""
+    language: str | None = None
+    inject_to: str = "default"
+    append_enter: bool = False
     # suppress=True installs an active CGEventTap to swallow the key event
     suppress: bool = False
 
@@ -205,6 +217,22 @@ class DictationConfig:
         if mic_device := os.environ.get("MURMUR_MIC_DEVICE"):
             config.transcriber.mic_device = mic_device
 
+        # On macOS, normalize KEY_LEFTALT/KEY_RIGHTALT → KEY_LEFTMETA/KEY_RIGHTMETA
+        # in all binding modifier lists.  This lets users write Linux-style configs
+        # and have them work correctly on macOS, where Option/Alt transforms key
+        # characters at the OS level but Cmd does not.
+        import sys
+
+        if sys.platform == "darwin":
+            _alt_to_meta = {
+                "KEY_LEFTALT": "KEY_LEFTMETA",
+                "KEY_RIGHTALT": "KEY_RIGHTMETA",
+            }
+            for binding in config.hotkey.bindings:
+                binding.modifiers = [
+                    _alt_to_meta.get(mod, mod) for mod in binding.modifiers
+                ]
+
         return config
 
     @classmethod
@@ -235,12 +263,17 @@ class DictationConfig:
                                 binding.trigger = b["trigger"]
                             if "action" in b:
                                 binding.action = b["action"]
-                            if "tmux_target" in b:
-                                binding.tmux_target = str(b["tmux_target"])
-                            if "tmux_keys" in b:
-                                binding.tmux_keys = str(b["tmux_keys"])
+                            if "language" in b:
+                                raw_lang = b["language"]
+                                binding.language = str(raw_lang) if raw_lang is not None else None
+                            if "inject_to" in b:
+                                binding.inject_to = str(b["inject_to"])
+                            if "append_enter" in b:
+                                binding.append_enter = bool(b["append_enter"])
                             if "suppress" in b:
                                 binding.suppress = bool(b["suppress"])
+                            # tmux_target and tmux_keys are silently ignored for
+                            # backward compatibility — old configs won't break.
                             bindings.append(binding)
                     if bindings:
                         config.hotkey.bindings = bindings

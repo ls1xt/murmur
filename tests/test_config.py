@@ -25,12 +25,11 @@ class TestDefaultValues:
         config = HotkeyConfig()
         assert config.backend == "auto"
         assert config.evdev_device is None
-        assert len(config.bindings) == 4
+        assert len(config.bindings) == 3
         actions = [b.action for b in config.bindings]
         assert actions == [
             "push_to_talk",
-            "toggle_start",
-            "toggle_stop",
+            "toggle",
             "copy_to_clipboard",
         ]
 
@@ -42,9 +41,9 @@ class TestDefaultValues:
 
     def test_hotkey_default_bindings_keys(self) -> None:
         config = HotkeyConfig()
-        assert config.bindings[0].trigger == "KEY_SPACE"
-        assert config.bindings[1].trigger == "KEY_K"
-        assert config.bindings[2].trigger == "KEY_L"
+        assert config.bindings[0].trigger == "KEY_F12"
+        assert config.bindings[1].trigger == "KEY_M"
+        assert config.bindings[2].trigger == "KEY_C"
 
     def test_transcriber_defaults(self) -> None:
         config = TranscriberConfig()
@@ -58,7 +57,7 @@ class TestDefaultValues:
         assert config.backend == "auto"
         assert config.trailing_space is True
         assert config.key_delay == 0
-        assert config.inject_strategy == "clipboard-fallback"
+        assert config.inject_strategy == "clipboard"
 
     def test_feedback_defaults(self) -> None:
         config = FeedbackConfig()
@@ -167,9 +166,9 @@ class TestFromDict:
         data: dict[str, Any] = {"hotkey": {"nonexistent_field": "value"}}
         config = DictationConfig._from_dict(data)
         # Should get default bindings since no old or new format detected
-        assert len(config.hotkey.bindings) == 4
+        assert len(config.hotkey.bindings) == 3
 
     def test_from_dict_empty_dict(self) -> None:
         data: dict[str, Any] = {}
         config = DictationConfig._from_dict(data)
-        assert len(config.hotkey.bindings) == 4
+        assert len(config.hotkey.bindings) == 3

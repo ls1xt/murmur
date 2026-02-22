@@ -100,4 +100,6 @@ testpaths = ["tests"]
 markers = [
     "hardware: marks tests that require real hardware (evdev device, ydotoold daemon)",
     "requires_virtual_mic: marks tests that require a virtual mic device (snd-aloop or BlackHole)",
+    "linux_only: marks tests that only run on Linux",
+    "macos_only: marks tests that only run on macOS",
 ]
