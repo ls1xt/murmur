@@ -75,9 +75,13 @@ class _ConfigArgs(Tap):
     key: str | None = None    # dot-separated config key (e.g. transcriber.api_key)
     value: str | None = None  # value to set for the given key
 
+    def configure(self) -> None:
+        self.set_defaults(func=_cmd_config)
+
 
 class _ListMicsArgs(Tap):
-    pass  # no arguments
+    def configure(self) -> None:
+        self.set_defaults(func=_cmd_list_mics)
 
 
 class _RecordArgs(Tap):
@@ -85,14 +89,21 @@ class _RecordArgs(Tap):
     notify: Literal["off", "errors", "verbose"] | None = None  # notification level override
     inject_partials: bool | None = None  # whether to inject partial transcriptions
 
+    def configure(self) -> None:
+        self.set_defaults(func=_cmd_record)
+
 
 class _DaemonArgs(Tap):
     action: Literal["start", "stop", "status", "enable"]  # daemon action
 
+    def configure(self) -> None:
+        self.add_argument("action", help="Daemon action: start, stop, status, enable")
+        self.set_defaults(func=_cmd_daemon)
+
 
 class _MurmurArgs(Tap):
     def configure(self) -> None:
-        self.add_subparsers(help="sub-command help")
+        self.add_subparsers(dest="subcommand", help="sub-command help")
         self.add_subparser("config", _ConfigArgs, help="View or set configuration")
         self.add_subparser("list-mics", _ListMicsArgs, help="List available microphone devices")
         self.add_subparser("record", _RecordArgs, help="Single dictation session")
@@ -265,12 +276,7 @@ def _cmd_daemon(args: _DaemonArgs) -> None:
 def main() -> None:
     """Entry point for the murmur CLI."""
     args = _MurmurArgs(description="System-wide voice dictation").parse_args()
-    subcommand = args.subcommand  # pyright: ignore[reportAttributeAccessIssue]
-    if isinstance(subcommand, _ConfigArgs):
-        _cmd_config(subcommand)
-    elif isinstance(subcommand, _RecordArgs):
-        _cmd_record(subcommand)
-    elif isinstance(subcommand, _DaemonArgs):
-        _cmd_daemon(subcommand)
-    elif isinstance(subcommand, _ListMicsArgs):
-        _cmd_list_mics(subcommand)
+    func = getattr(args, "func", None)
+    if func is None:
+        fatal("No subcommand provided. Use --help for usage information.")
+    func(args)
