@@ -4,9 +4,9 @@ ydotool-based text injector -- works on Wayland and X11.
 Uses the kernel uinput subsystem to simulate a virtual keyboard, bypassing
 Wayland's input restrictions. Supports three injection strategies:
 
-- ``ydotool``: Direct ``ydotool type`` (fast, ASCII-only).
-- ``clipboard``: Always ``wl-copy`` + Ctrl+V (handles all Unicode).
-- ``clipboard-fallback``: ydotool for ASCII, clipboard for non-ASCII.
+- ``ydotool``: Direct ``ydotool type`` for all text (fast, Unicode-capable).
+- ``clipboard``: Always ``wl-copy`` + Ctrl+V.
+- ``clipboard-fallback``: ydotool when available, wl-copy+Ctrl+V otherwise.
 """
 
 from __future__ import annotations
@@ -134,12 +134,12 @@ class YdotoolInjector(TextInjector):
         if self._inject_strategy == "clipboard":
             self._inject_via_clipboard(text)
         elif self._inject_strategy == "clipboard-fallback":
-            if text.isascii():
+            if self._resolved_path:
                 self._inject_via_ydotool(text)
             else:
                 self._inject_via_clipboard(text)
         else:
-            # "ydotool" strategy (default fallback)
+            # "ydotool" strategy
             self._inject_via_ydotool(text)
 
     def inject_raw(self, text: str) -> None:
@@ -162,7 +162,7 @@ class YdotoolInjector(TextInjector):
         if self._inject_strategy == "clipboard":
             self._inject_via_clipboard(text)
         elif self._inject_strategy == "clipboard-fallback":
-            if text.isascii():
+            if self._resolved_path:
                 self._inject_via_ydotool_raw(text)
             else:
                 self._inject_via_clipboard(text)

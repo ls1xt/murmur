@@ -166,7 +166,7 @@ class InjectorConfig:
     ydotool_path: str = "ydotool"
     trailing_space: bool = True
     key_delay: int = 1
-    inject_strategy: Literal["clipboard", "clipboard-fallback", "ydotool"] = "clipboard"
+    inject_strategy: Literal["clipboard", "clipboard-fallback", "ydotool"] = "ydotool"
 
 
 @dataclass
