@@ -39,7 +39,7 @@
   },
   "injector": {
     "trailing_space": true,
-    "key_delay": 10,
+    "key_delay": 2,
     "inject_strategy": "pynput"
   },
   "feedback": {

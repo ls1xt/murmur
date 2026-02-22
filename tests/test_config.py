@@ -58,7 +58,7 @@ class TestDefaultValues:
         config = InjectorConfig()
         assert config.backend == "auto"
         assert config.trailing_space is True
-        assert config.key_delay == 0
+        assert config.key_delay == 1
         assert config.inject_strategy == "clipboard"
 
     def test_feedback_defaults(self) -> None:

@@ -119,7 +119,7 @@ class InjectorConfig:
     backend: str = "auto"
     ydotool_path: str = "ydotool"
     trailing_space: bool = True
-    key_delay: int = 0
+    key_delay: int = 1
     inject_strategy: str = "clipboard"
 
 
