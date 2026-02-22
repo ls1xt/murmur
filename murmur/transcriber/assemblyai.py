@@ -17,7 +17,7 @@ from typing import Any, TypedDict
 
 import sounddevice as _sd
 
-from murmur.config import _KEYTERMS_MAX, _KEYTERMS_MAX_LEN, TranscriberConfig
+from murmur.config import KEYTERMS_MAX, KEYTERMS_MAX_LEN, TranscriberConfig
 from murmur.errors import fatal_from_thread
 from murmur.transcriber.base import Transcriber
 
@@ -160,25 +160,25 @@ def _sanitize_keyterms(raw: list[str]) -> list[str]:
             logger.warning("Keyterm duplicate dropped: %r", term)
             continue
         seen.add(term)
-        if len(term) > _KEYTERMS_MAX_LEN:
+        if len(term) > KEYTERMS_MAX_LEN:
             logger.warning(
                 "Keyterm too long (%d chars, max %d), dropped: %r",
                 len(term),
-                _KEYTERMS_MAX_LEN,
+                KEYTERMS_MAX_LEN,
                 term,
             )
             continue
         result.append(term)
 
-    if len(result) > _KEYTERMS_MAX:
-        dropped = result[_KEYTERMS_MAX:]
+    if len(result) > KEYTERMS_MAX:
+        dropped = result[KEYTERMS_MAX:]
         logger.warning(
             "Too many keyterms (%d); truncating to %d. Dropped: %s",
             len(result),
-            _KEYTERMS_MAX,
+            KEYTERMS_MAX,
             dropped,
         )
-        result = result[:_KEYTERMS_MAX]
+        result = result[:KEYTERMS_MAX]
 
     return result
 

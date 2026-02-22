@@ -93,8 +93,8 @@ class HotkeyConfig:
     stop_on_keypress: bool = True
 
 
-_KEYTERMS_MAX = 100
-_KEYTERMS_MAX_LEN = 50
+KEYTERMS_MAX = 100
+KEYTERMS_MAX_LEN = 50
 
 
 @dataclass
@@ -134,7 +134,7 @@ class TranscriberConfig:
                 dupes.append(t)
             else:
                 seen.add(t)
-            if len(t) > _KEYTERMS_MAX_LEN:
+            if len(t) > KEYTERMS_MAX_LEN:
                 too_long.append(t)
         unique_count = len(seen)
         if dupes:
@@ -144,17 +144,17 @@ class TranscriberConfig:
         if too_long:
             logger.warning(
                 "Config: keyterms exceed %d-char limit and will be dropped: %s",
-                _KEYTERMS_MAX_LEN,
+                KEYTERMS_MAX_LEN,
                 too_long,
             )
-        if unique_count > _KEYTERMS_MAX:
+        if unique_count > KEYTERMS_MAX:
             logger.warning(
                 "Config: %d keyterms exceeds AssemblyAI limit of %d; "
                 "the last %d will be dropped at connect time. "
                 "Trim your keyterms_prompt list.",
                 unique_count,
-                _KEYTERMS_MAX,
-                unique_count - _KEYTERMS_MAX,
+                KEYTERMS_MAX,
+                unique_count - KEYTERMS_MAX,
             )
 
 
