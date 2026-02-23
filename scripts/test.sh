@@ -14,6 +14,10 @@ if [[ "$(uname -s)" == "Linux" ]]; then
 fi
 
 echo "==> Pre-commit checks"
+if [[ -z "${CI:-}" && ! -f ".git/hooks/pre-commit" ]]; then
+    echo "ERROR: pre-commit hook not installed. Run: uv run pre-commit install" >&2
+    exit 1
+fi
 uv run pre-commit run --all-files
 
 echo "==> Lint (ruff)"

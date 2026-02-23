@@ -27,9 +27,7 @@ class TestHotkeyListenerBase:
 
         return StubListener()
 
-    def _binding(
-        self, mode: Literal["push_to_talk", "toggle"]
-    ) -> HotkeyBinding:
+    def _binding(self, mode: Literal["push_to_talk", "toggle"]) -> HotkeyBinding:
         """Create a HotkeyBinding with the given mode for dispatch tests."""
         return HotkeyBinding(
             modifiers=["KEY_LEFTCTRL"],
