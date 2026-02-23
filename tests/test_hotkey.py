@@ -88,28 +88,6 @@ class TestHotkeyListenerBase:
         listener.dispatch_action(binding)
         listener.dispatch_release(binding)
 
-    def test_copy_to_clipboard_activate_on_dispatch(self) -> None:
-        listener = self._make_listener()
-        on_activate = MagicMock()
-        on_deactivate = MagicMock()
-        listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
-
-        binding = self._binding("copy_to_clipboard")
-        listener.dispatch_action(binding)
-        on_activate.assert_called_once_with(binding)
-        on_deactivate.assert_not_called()
-
-    def test_copy_to_clipboard_deactivate_on_release(self) -> None:
-        listener = self._make_listener()
-        on_activate = MagicMock()
-        on_deactivate = MagicMock()
-        listener.set_callbacks(on_activate=on_activate, on_deactivate=on_deactivate)
-
-        binding = self._binding("copy_to_clipboard")
-        listener.dispatch_release(binding)
-        on_deactivate.assert_called_once()
-        on_activate.assert_not_called()
-
 
 @pytest.mark.linux_only
 class TestEvdevHotkeyListener:

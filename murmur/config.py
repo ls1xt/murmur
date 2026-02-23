@@ -28,16 +28,17 @@ class HotkeyBinding:
         mode: Activation mode.  ``"push_to_talk"`` records while the key is
             held and stops on release.  ``"toggle"`` starts recording on the
             first press and stops on a second press.
-        destination: Where the transcribed text is sent.  ``"direct_inject"``
-            types the text into the currently focused application.
-            ``"clipboard"`` copies the full session text to the system
-            clipboard on completion.
+        destination: Where the transcribed text is sent.  ``"type"`` types
+            the text into the currently focused application using keystroke
+            injection.  ``"clipboard"`` copies the full session text to the
+            system clipboard on completion.  ``"tmux"`` sends text to a
+            specific tmux pane; set ``inject_to`` to the target pane address
+            (e.g. ``"SESSION:WINDOW.PANE"``).
         language: Per-binding language override.  An ISO 639-1 code or
             AssemblyAI regional variant (e.g. ``"de"``, ``"en_au"``).  When
             ``None``, the global transcriber language is used.
-        inject_to: Where transcribed text is injected.  ``"default"`` targets
-            the currently active window; ``"tmux:SESSION:WINDOW.PANE"`` sends
-            text to a specific tmux pane.
+        inject_to: Tmux pane address when ``destination == "tmux"``
+            (e.g. ``"todo:0.0"``).  Ignored for other destinations.
         append_enter: When ``True``, a Return key press is sent after the
             transcription is injected at the end of each session.
         suppress: When ``True``, installs an active CGEventTap to swallow the
@@ -49,7 +50,7 @@ class HotkeyBinding:
     )
     trigger: str = "KEY_SPACE"
     mode: Literal["push_to_talk", "toggle"] = "push_to_talk"
-    destination: Literal["direct_inject", "clipboard"] = "direct_inject"
+    destination: Literal["type", "clipboard", "tmux"] = "type"
     language: str | None = None
     inject_to: str = "default"
     append_enter: bool = False
@@ -73,14 +74,14 @@ def _default_bindings() -> list[HotkeyBinding]:
             modifiers=[],
             trigger="KEY_F12",
             mode="push_to_talk",
-            destination="direct_inject",
+            destination="type",
             suppress=True,
         ),
         HotkeyBinding(
             modifiers=["KEY_LEFTCTRL", meta],
             trigger="KEY_M",
             mode="toggle",
-            destination="direct_inject",
+            destination="type",
         ),
         HotkeyBinding(
             modifiers=["KEY_LEFTCTRL", meta],
@@ -341,9 +342,13 @@ class DictationConfig:
                                     bd["mode"],
                                 )
                             if "destination" in bd:
+                                dest = str(bd["destination"])
+                                # Migrate old "direct_inject" value to "type"
+                                if dest == "direct_inject":
+                                    dest = "type"
                                 binding.destination = cast(
-                                    Literal["direct_inject", "clipboard"],
-                                    bd["destination"],
+                                    Literal["type", "clipboard", "tmux"],
+                                    dest,
                                 )
                             if "language" in bd:
                                 raw_lang: Any = bd["language"]
@@ -351,7 +356,16 @@ class DictationConfig:
                                     str(raw_lang) if raw_lang is not None else None
                                 )
                             if "inject_to" in bd:
-                                binding.inject_to = str(bd["inject_to"])
+                                raw_inject_to = str(bd["inject_to"])
+                                # Migrate old inject_to="tmux:TARGET" to
+                                # destination="tmux" + inject_to="TARGET"
+                                if raw_inject_to.startswith("tmux:"):
+                                    binding.destination = "tmux"
+                                    binding.inject_to = raw_inject_to.removeprefix(
+                                        "tmux:"
+                                    )
+                                else:
+                                    binding.inject_to = raw_inject_to
                             if "append_enter" in bd:
                                 binding.append_enter = bool(bd["append_enter"])
                             if "suppress" in bd:

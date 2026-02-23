@@ -185,17 +185,17 @@ class DictationApp:
     def _build_binding_injectors(self) -> dict[int, TextInjector]:
         """Build a per-binding injector map.
 
-        Bindings with ``inject_to="tmux:TARGET"`` get a dedicated
-        ``TmuxInjector``; all others map to the shared default injector.
+        Bindings with ``destination="tmux"`` get a dedicated
+        ``TmuxInjector`` targeting ``binding.inject_to``; all others map to
+        the shared default injector.
         """
         from murmur.injector.tmux import TmuxInjector
 
         injectors: dict[int, TextInjector] = {}
         for binding in self.config.hotkey.bindings:
-            if binding.inject_to.startswith("tmux:"):
-                target = binding.inject_to.removeprefix("tmux:")
+            if binding.destination == "tmux":
                 injectors[id(binding)] = TmuxInjector(
-                    target=target,
+                    target=binding.inject_to,
                     trailing_space=self.config.injector.trailing_space,
                 )
             else:
@@ -234,7 +234,7 @@ class DictationApp:
 
         ``binding`` is the full HotkeyBinding that was triggered.
         ``binding.mode`` is ``"push_to_talk"`` or ``"toggle"``.
-        ``binding.destination`` is ``"direct_inject"`` or ``"clipboard"``.
+        ``binding.destination`` is ``"type"``, ``"clipboard"``, or ``"tmux"``.
         ``trigger`` is "hotkey" or "tray" and indicates what triggered recording.
         """
         self.maybe_reload_config()
@@ -268,12 +268,13 @@ class DictationApp:
 
         lang = resolve_language(binding.language)
         logger.info(
-            "Recording started (trigger=%s mode=%s destination=%s language=%s inject_to=%s)",
+            "Recording started (trigger=%s mode=%s destination=%s language=%s)",
             trigger,
             binding.mode,
-            binding.destination,
+            binding.destination
+            if binding.destination != "tmux"
+            else f"tmux:{binding.inject_to}",
             lang or self.config.transcriber.language,
-            binding.inject_to,
         )
         self.feedback.play_start()
         self.notifier.info("Recording started")
@@ -475,11 +476,14 @@ class DictationApp:
                 if binding.modifiers
                 else binding.trigger
             )
-            parts = [f"{binding.mode.replace('_', ' ').title()} → {binding.destination.replace('_', ' ').title()}"]
+            dest_label = (
+                f"tmux:{binding.inject_to}"
+                if binding.destination == "tmux"
+                else binding.destination
+            )
+            parts = [f"{binding.mode.replace('_', ' ').title()} → {dest_label}"]
             if binding.language:
                 parts.append(f"lang={binding.language}")
-            if binding.inject_to != "default":
-                parts.append(f"-> {binding.inject_to}")
             if binding.append_enter:
                 parts.append("+Enter")
             print(f"  {combo}  ->  {', '.join(parts)}")

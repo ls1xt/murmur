@@ -31,14 +31,14 @@ class TestDefaultValues:
         modes = [b.mode for b in config.bindings]
         destinations = [b.destination for b in config.bindings]
         assert modes == ["push_to_talk", "toggle", "push_to_talk", "toggle"]
-        assert destinations == ["direct_inject", "direct_inject", "clipboard", "clipboard"]
+        assert destinations == ["type", "type", "clipboard", "clipboard"]
 
     def test_hotkey_binding_defaults(self) -> None:
         binding = HotkeyBinding()
         assert binding.modifiers == ["KEY_LEFTCTRL", "KEY_LEFTALT"]
         assert binding.trigger == "KEY_SPACE"
         assert binding.mode == "push_to_talk"
-        assert binding.destination == "direct_inject"
+        assert binding.destination == "type"
 
     def test_hotkey_default_bindings_keys(self) -> None:
         config = HotkeyConfig()
@@ -138,6 +138,55 @@ class TestFromDict:
         assert config.hotkey.bindings[0].mode == "toggle"
         assert config.hotkey.bindings[0].destination == "clipboard"
 
+    def testfrom_dict_migrates_direct_inject_to_type(self) -> None:
+        """Old 'direct_inject' destination value is migrated to 'type'."""
+        data: dict[str, Any] = {
+            "hotkey": {
+                "bindings": [
+                    {
+                        "trigger": "KEY_F12",
+                        "destination": "direct_inject",
+                    }
+                ]
+            }
+        }
+        config = DictationConfig.from_dict(data)
+        assert config.hotkey.bindings[0].destination == "type"
+
+    def testfrom_dict_migrates_tmux_inject_to_prefix(self) -> None:
+        """Old inject_to='tmux:TARGET' is migrated to destination='tmux' + inject_to='TARGET'."""
+        data: dict[str, Any] = {
+            "hotkey": {
+                "bindings": [
+                    {
+                        "trigger": "KEY_T",
+                        "inject_to": "tmux:todo:0.0",
+                    }
+                ]
+            }
+        }
+        config = DictationConfig.from_dict(data)
+        assert config.hotkey.bindings[0].destination == "tmux"
+        assert config.hotkey.bindings[0].inject_to == "todo:0.0"
+
+    def testfrom_dict_tmux_destination_explicit(self) -> None:
+        """New destination='tmux' with inject_to pane address deserializes correctly."""
+        data: dict[str, Any] = {
+            "hotkey": {
+                "bindings": [
+                    {
+                        "trigger": "KEY_T",
+                        "mode": "toggle",
+                        "destination": "tmux",
+                        "inject_to": "todo:0.0",
+                    }
+                ]
+            }
+        }
+        config = DictationConfig.from_dict(data)
+        assert config.hotkey.bindings[0].destination == "tmux"
+        assert config.hotkey.bindings[0].inject_to == "todo:0.0"
+
     def testfrom_dict_applies_transcriber_settings(self) -> None:
         data: dict[str, Any] = {
             "transcriber": {"api_key": "my_key", "sample_rate": 8000}
@@ -155,12 +204,12 @@ class TestFromDict:
         data: dict[str, Any] = {"hotkey": {"nonexistent_field": "value"}}
         config = DictationConfig.from_dict(data)
         # Should get default bindings since no old or new format detected
-        assert len(config.hotkey.bindings) == 3
+        assert len(config.hotkey.bindings) == 4
 
     def testfrom_dict_empty_dict(self) -> None:
         data: dict[str, Any] = {}
         config = DictationConfig.from_dict(data)
-        assert len(config.hotkey.bindings) == 3
+        assert len(config.hotkey.bindings) == 4
 
 
 EXAMPLE_CONFIG = Path(__file__).parent.parent / "examples" / "config.json"

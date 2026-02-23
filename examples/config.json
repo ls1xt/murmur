@@ -4,30 +4,35 @@
       {
         "modifiers": [],
         "trigger": "KEY_F12",
-        "action": "push_to_talk",
+        "mode": "push_to_talk",
+        "destination": "type",
         "suppress": true
       },
       {
         "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTMETA"],
         "trigger": "KEY_M",
-        "action": "toggle"
+        "mode": "toggle",
+        "destination": "type"
       },
       {
         "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTMETA"],
         "trigger": "KEY_C",
-        "action": "copy_to_clipboard"
+        "mode": "push_to_talk",
+        "destination": "clipboard"
       },
       {
         "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTMETA"],
         "trigger": "KEY_K",
-        "action": "toggle",
+        "mode": "toggle",
+        "destination": "type",
         "language": "de"
       },
       {
         "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTMETA"],
         "trigger": "KEY_T",
-        "action": "toggle",
-        "inject_to": "tmux:todo:0.0",
+        "mode": "toggle",
+        "destination": "tmux",
+        "inject_to": "todo:0.0",
         "append_enter": true
       }
     ]
@@ -39,8 +44,7 @@
   },
   "injector": {
     "trailing_space": true,
-    "key_delay": 2,
-    "inject_strategy": "pynput"
+    "key_delay": 2
   },
   "feedback": {
     "start_hz": 440.0,

@@ -43,8 +43,9 @@ you're focused in. Add this to `~/.config/murmur/config.json`:
     "bindings": [{
       "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTMETA"],
       "trigger": "KEY_T",
-      "action": "toggle",
-      "inject_to": "tmux:todo:0.0",
+      "mode": "toggle",
+      "destination": "tmux",
+      "inject_to": "todo:0.0",
       "append_enter": true
     }]
   }
@@ -215,9 +216,9 @@ Each binding is independent and fully configurable:
 | `modifiers` | `[]` | Modifier keys (e.g. `["KEY_LEFTCTRL", "KEY_LEFTMETA"]`) |
 | `trigger` | — | Trigger key (e.g. `"KEY_F12"`) |
 | `mode` | `"push_to_talk"` | `push_to_talk` (hold to record), `toggle` (press to start/stop) |
-| `destination` | `"direct_inject"` | `direct_inject` (type into active app), `clipboard` (copy to clipboard) |
+| `destination` | `"type"` | `type` (keystroke into active app), `clipboard` (copy to clipboard), `tmux` (send to tmux pane) |
 | `language` | `null` | Language override for this binding (e.g. `"de"`, `"en_au"`) |
-| `inject_to` | `"default"` | `"default"` (focused window) or `"tmux:SESSION:WINDOW.PANE"` |
+| `inject_to` | — | Tmux pane address when `destination` is `"tmux"` (e.g. `"SESSION:WINDOW.PANE"`) |
 | `append_enter` | `false` | Send Return keystroke after injection |
 | `suppress` | `false` | Swallow the key event (prevents it reaching other apps) |
 
