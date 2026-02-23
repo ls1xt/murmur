@@ -11,7 +11,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = {text = "MIT"}
 authors = [
-    {name = "Leon Sixt", email = "leon@berleon.eu"},
+    {name = "Leon Sixt", email = "pypi@leon-sixt.de"},
 ]
 keywords = ["voice", "dictation", "speech-to-text", "accessibility", "transcription"]
 classifiers = [
@@ -42,9 +42,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/berleon/murmur"
-Repository = "https://github.com/berleon/murmur"
-Issues = "https://github.com/berleon/murmur/issues"
+Homepage = "https://github.com/ls1xt/murmur"
+Repository = "https://github.com/ls1xt/murmur"
+Issues = "https://github.com/ls1xt/murmur/issues"
 
 [project.scripts]
 # Note: entry point uses "murmur-dictation" to match the PyPI package name.

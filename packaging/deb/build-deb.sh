@@ -95,7 +95,7 @@ fpm \
     -v "${VERSION}" \
     -a "${ARCH}" \
     --description "System-wide voice dictation for Linux" \
-    --url "https://github.com/berleon/murmur" \
+    --url "https://github.com/ls1xt/murmur" \
     --license "MIT" \
     --depends "python3 (>= 3.10)" \
     --depends "portaudio19-dev" \

@@ -3,7 +3,7 @@
 ## Install (once tap is published)
 
 ```bash
-brew tap berleon/murmur
+brew tap ls1xt/murmur
 brew install murmur
 ```
 

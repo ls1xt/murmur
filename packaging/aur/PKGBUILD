@@ -1,10 +1,10 @@
-# Maintainer: Leon Sixt <leon@berleon.eu>
+# Maintainer: Leon Sixt <aur@leon-sixt.de>
 pkgname=python-murmur
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="System-wide voice dictation for Linux and macOS"
 arch=('x86_64')
-url="https://github.com/berleon/murmur"
+url="https://github.com/ls1xt/murmur"
 license=('MIT')
 depends=(
     'python>=3.10'
