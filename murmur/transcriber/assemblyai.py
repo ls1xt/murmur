@@ -621,7 +621,7 @@ class AssemblyAITranscriber(Transcriber):
             f"WebSocket connection lost and reconnect failed after {attempts} attempts"
         )
 
-    def _cleanup_after_error(self, message: str) -> None:
+    def cleanup_after_error(self, message: str) -> None:
         """Clean up session state after a non-fatal error.
 
         Runs in a background thread so the SDK's internal thread is not
@@ -700,7 +700,7 @@ class AssemblyAITranscriber(Transcriber):
 
         # Clean up in a background thread; do not block the SDK's thread.
         threading.Thread(
-            target=self._cleanup_after_error,
+            target=self.cleanup_after_error,
             args=(message,),
             daemon=True,
         ).start()

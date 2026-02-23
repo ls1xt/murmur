@@ -247,9 +247,7 @@ class TestLoadErrors:
     def test_missing_config_file_uses_defaults(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            "murmur.config.CONFIG_FILE", tmp_path / "nonexistent.json"
-        )
+        monkeypatch.setattr("murmur.config.CONFIG_FILE", tmp_path / "nonexistent.json")
         config = DictationConfig.load()
         assert isinstance(config, DictationConfig)
 

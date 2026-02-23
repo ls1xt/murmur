@@ -232,7 +232,7 @@ class TestAssemblyAIErrorHandling:
         mock_thread_cls.assert_called()
         thread_call = mock_thread_cls.call_args
         target = thread_call[1].get("target") or thread_call[0][0]
-        assert target == transcriber._cleanup_after_error
+        assert target == transcriber.cleanup_after_error
 
     def test_stream_error_classifies_1008(self, mocker: Any) -> None:
         from murmur.transcriber.assemblyai import AssemblyAITranscriber
@@ -270,7 +270,7 @@ class TestAssemblyAIErrorHandling:
         mock_thread_cls.assert_called()
         thread_call = mock_thread_cls.call_args
         target = thread_call[1].get("target") or thread_call[0][0]
-        assert target == transcriber._cleanup_after_error
+        assert target == transcriber.cleanup_after_error
         # Verify the message passed to cleanup contains the right classification
         args = thread_call[1].get("args") or thread_call[0][1]
         assert "session expired" in args[0].lower() or "3005" in args[0]

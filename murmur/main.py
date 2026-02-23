@@ -20,7 +20,7 @@ from typing import Literal
 from tap import Tap
 
 from murmur.app import DictationApp, SessionFilter
-from murmur.config import ConfigError, KEYTERMS_MAX, KEYTERMS_MAX_LEN, DictationConfig
+from murmur.config import KEYTERMS_MAX, KEYTERMS_MAX_LEN, ConfigError, DictationConfig
 from murmur.errors import fatal
 
 
