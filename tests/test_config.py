@@ -12,6 +12,7 @@ import pytest
 from murmur.config import (
     CONFIG_DIR,
     ClipboardDestination,
+    ConfigError,
     DictationConfig,
     FeedbackConfig,
     HotkeyBinding,
@@ -220,6 +221,37 @@ class TestFromDict:
         data: dict[str, Any] = {}
         config = DictationConfig.from_dict(data)
         assert len(config.hotkey.bindings) == 4
+
+
+class TestLoadErrors:
+    """Test that broken config files raise ConfigError instead of silently falling back."""
+
+    def test_invalid_json_raises_config_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bad_config = tmp_path / "config.json"
+        bad_config.write_text("{not valid json")
+        monkeypatch.setattr("murmur.config.CONFIG_FILE", bad_config)
+        with pytest.raises(ConfigError, match="Failed to load config file"):
+            DictationConfig.load()
+
+    def test_wrong_type_raises_config_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bad_config = tmp_path / "config.json"
+        bad_config.write_text('"just a string"')
+        monkeypatch.setattr("murmur.config.CONFIG_FILE", bad_config)
+        with pytest.raises(ConfigError, match="Failed to load config file"):
+            DictationConfig.load()
+
+    def test_missing_config_file_uses_defaults(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "murmur.config.CONFIG_FILE", tmp_path / "nonexistent.json"
+        )
+        config = DictationConfig.load()
+        assert isinstance(config, DictationConfig)
 
 
 EXAMPLE_CONFIG = Path(__file__).parent.parent / "examples" / "config.json"

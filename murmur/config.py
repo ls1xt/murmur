@@ -18,6 +18,10 @@ CONFIG_DIR: Final[Path] = Path.home() / ".config" / "murmur"
 CONFIG_FILE: Final[Path] = CONFIG_DIR / "config.json"
 
 
+class ConfigError(Exception):
+    """Raised when the config file exists but cannot be loaded."""
+
+
 @dataclass(frozen=True)
 class TypeDestination:
     """Send transcribed text to the focused application via keystroke injection."""
@@ -336,7 +340,9 @@ class DictationConfig:
                 config = cls.from_dict(data)
                 logger.info("Loaded config from %s", CONFIG_FILE)
             except Exception as e:
-                logger.warning("Failed to load config file: %s", e)
+                raise ConfigError(
+                    f"Failed to load config file {CONFIG_FILE}: {e}"
+                ) from e
 
         if api_key := os.environ.get("ASSEMBLYAI_API_KEY"):
             config.transcriber.api_key = api_key

@@ -18,7 +18,7 @@ from typing import Literal
 from tap import Tap
 
 from murmur.app import DictationApp, SessionFilter
-from murmur.config import DictationConfig
+from murmur.config import ConfigError, DictationConfig
 from murmur.errors import fatal
 
 
@@ -117,7 +117,10 @@ class _MurmurArgs(Tap):
 
 def _cmd_config(args: _ConfigArgs) -> None:
     """Handle: murmur config [--key KEY] [--value VALUE]"""
-    config = DictationConfig.load()
+    try:
+        config = DictationConfig.load()
+    except ConfigError as e:
+        fatal(str(e))
 
     if args.key is None:
         # Print full config as JSON
@@ -172,7 +175,10 @@ def _cmd_list_mics(_args: _ListMicsArgs) -> None:
 
 def _cmd_record(args: _RecordArgs) -> None:
     """Handle: murmur record [--inject ...] [--notify ...] [--inject-partials]"""
-    config = DictationConfig.load()
+    try:
+        config = DictationConfig.load()
+    except ConfigError as e:
+        fatal(str(e))
 
     if args.inject is not None:
         config.injector.inject_strategy = args.inject
