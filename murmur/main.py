@@ -10,15 +10,17 @@ import dataclasses
 import json
 import logging
 import os
+import re
 import signal
 import subprocess
 import sys
+from pathlib import Path
 from typing import Literal
 
 from tap import Tap
 
 from murmur.app import DictationApp, SessionFilter
-from murmur.config import ConfigError, DictationConfig
+from murmur.config import ConfigError, KEYTERMS_MAX, KEYTERMS_MAX_LEN, DictationConfig
 from murmur.errors import fatal
 
 
@@ -104,6 +106,77 @@ class _DaemonArgs(Tap):
         self.set_defaults(func=_cmd_daemon)
 
 
+def _parse_keyterms_file(path: str) -> list[str]:
+    """Extract keyterms from a file containing a ``## Murmur Keyterms`` section.
+
+    Looks for a heading whose text matches "murmur keyterms" (case-insensitive)
+    and collects all terms until the next heading or end of file.
+
+    Supported term formats within the section:
+    - Comma-separated values on any line
+    - Markdown bullet points (``- term`` or ``* term``)
+    - Backtick-quoted terms (```term```)
+
+    HTML comments (``<!-- ... -->``) are stripped before parsing.
+    """
+    try:
+        content = Path(path).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        fatal(f"File not found: {path}")
+    except OSError as e:
+        fatal(f"Cannot read {path!r}: {e}")
+
+    lines = content.splitlines()
+    section_start: int | None = None
+    for i, line in enumerate(lines):
+        if re.match(r"^#{1,6}\s+.*murmur\s+keyterms", line.strip(), re.IGNORECASE):
+            section_start = i + 1
+            break
+
+    if section_start is None:
+        return []
+
+    section_lines: list[str] = []
+    for line in lines[section_start:]:
+        if re.match(r"^#{1,6}\s+", line):
+            break
+        section_lines.append(line)
+
+    # Strip HTML comments
+    section_text = re.sub(r"<!--.*?-->", "", "\n".join(section_lines), flags=re.DOTALL)
+
+    terms: list[str] = []
+    for line in section_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(("-", "*", "•")):
+            # Bullet: "- term" or "- term1, term2"
+            rest = stripped[1:].strip()
+            terms.extend(t.strip() for t in rest.split(",") if t.strip())
+        else:
+            # Check for backtick-quoted terms first
+            backtick = re.findall(r"`([^`]+)`", stripped)
+            if backtick:
+                terms.extend(t.strip() for t in backtick if t.strip())
+            else:
+                # Plain comma-separated
+                terms.extend(t.strip() for t in stripped.split(",") if t.strip())
+
+    return terms
+
+
+class _KeytermsArgs(Tap):
+    action: Literal["list", "import", "add", "clear"]  # keyterms action
+    file: str = "CLAUDE.md"  # file to import from (for 'import')
+    terms: str = ""  # comma-separated terms to add (for 'add')
+    replace: bool = False  # replace existing instead of merging
+
+    def configure(self) -> None:
+        self.add_argument("action", help="Keyterms action: list, import, add, clear")
+        self.set_defaults(func=_cmd_keyterms)
+
+
 class _MurmurArgs(Tap):
     def configure(self) -> None:
         self.add_subparsers(dest="subcommand", help="sub-command help")
@@ -113,6 +186,9 @@ class _MurmurArgs(Tap):
         )
         self.add_subparser("record", _RecordArgs, help="Single dictation session")
         self.add_subparser("daemon", _DaemonArgs, help="Manage background service")
+        self.add_subparser(
+            "keyterms", _KeytermsArgs, help="Manage transcription keyterms"
+        )
 
 
 def _cmd_config(args: _ConfigArgs) -> None:
@@ -282,6 +358,89 @@ def _cmd_daemon(args: _DaemonArgs) -> None:
             else:
                 print("  Copy murmur.service to ~/.config/systemd/user/")
                 print("  Then: systemctl --user enable --now murmur")
+
+
+def _cmd_keyterms(args: _KeytermsArgs) -> None:
+    """Handle: murmur keyterms {list|import|add|clear}"""
+    config = DictationConfig.load()
+    action = args.action
+
+    if action == "list":
+        terms = config.transcriber.keyterms_prompt
+        if not terms:
+            print("No keyterms configured.")
+            print("  murmur keyterms add --terms 'ScyllaDB,PyO3'")
+            print(
+                "  murmur keyterms import              # reads ## Murmur Keyterms from CLAUDE.md"
+            )
+            return
+        print(f"Keyterms ({len(terms)}/{KEYTERMS_MAX}):")
+        for i, term in enumerate(terms, 1):
+            flag = (
+                f"  [>{KEYTERMS_MAX_LEN} chars, will be dropped]"
+                if len(term) > KEYTERMS_MAX_LEN
+                else ""
+            )
+            print(f"  {i:3d}. {term}{flag}")
+
+    elif action == "import":
+        new_terms = _parse_keyterms_file(args.file)
+        if not new_terms:
+            print(f"No keyterms found in {args.file!r}.")
+            print("Add a section to that file like:")
+            print("")
+            print("  ## Murmur Keyterms")
+            print("  ScyllaDB, PyO3, my-project-name")
+            return
+
+        existing = list(config.transcriber.keyterms_prompt)
+        if args.replace:
+            merged = list(dict.fromkeys(new_terms))  # deduplicate, preserve order
+        else:
+            seen = set(existing)
+            merged = existing + [t for t in new_terms if t not in seen]
+
+        if len(merged) > KEYTERMS_MAX:
+            print(
+                f"Warning: {len(merged)} terms exceed limit of {KEYTERMS_MAX}; truncating."
+            )
+            merged = merged[:KEYTERMS_MAX]
+
+        config.transcriber.keyterms_prompt = merged
+        config.save()
+
+        added = len(merged) - (0 if args.replace else len(existing))
+        action_word = "Imported" if args.replace else "Merged"
+        print(
+            f"{action_word} {len(new_terms)} terms from {args.file!r} (+{added} new, {len(merged)} total)."
+        )
+
+    elif action == "add":
+        if not args.terms:
+            fatal("Provide terms with --terms 'term1,term2,...'")
+        new_terms = [t.strip() for t in args.terms.split(",") if t.strip()]
+        existing = list(config.transcriber.keyterms_prompt)
+        if args.replace:
+            merged = list(dict.fromkeys(new_terms))
+        else:
+            seen = set(existing)
+            merged = existing + [t for t in new_terms if t not in seen]
+
+        if len(merged) > KEYTERMS_MAX:
+            print(
+                f"Warning: {len(merged)} terms exceed limit of {KEYTERMS_MAX}; truncating."
+            )
+            merged = merged[:KEYTERMS_MAX]
+
+        config.transcriber.keyterms_prompt = merged
+        config.save()
+        added = len(merged) - (0 if args.replace else len(existing))
+        print(f"Added {added} term(s). Total: {len(merged)}/{KEYTERMS_MAX}.")
+
+    elif action == "clear":
+        config.transcriber.keyterms_prompt = []
+        config.save()
+        print("Keyterms cleared.")
 
 
 def main() -> None:
