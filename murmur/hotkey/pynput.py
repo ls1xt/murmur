@@ -523,16 +523,17 @@ class PynputHotkeyListener(HotkeyListener):
         # without stopping the session.  Injected events are already filtered
         # above (injected=True guard), so only genuine user input reaches here.
         #
-        # NOTE: pynput's canonical() strips the vk from keys that carry a char,
-        # so the Return key (raw: KeyCode(char='\r', vk=36)) becomes
-        # KeyCode(char='\r') after canonicalisation — NOT Key.enter
-        # (KeyCode(vk=36)).  Both forms must be excluded.
+        # NOTE: pynput's canonical() returns Key.enter.value (KeyCode(vk=36)),
+        # not the Key.enter enum member itself, so identity/equality checks
+        # against Key.enter always fail.  Compare against Key.enter.value
+        # instead.  Also guard against KeyCode(char='\r'/'\n') which some
+        # input paths produce.
         if (
             not any_binding_matched
             and self._stop_on_keypress
             and self._active_action == "toggle"
             and canonical not in _MODIFIER_KEYS
-            and canonical is not Key.enter
+            and canonical != Key.enter.value
             and not (isinstance(canonical, KeyCode) and canonical.char in _ENTER_CHARS)
             and self.on_deactivate is not None
         ):
