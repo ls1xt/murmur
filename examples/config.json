@@ -31,8 +31,7 @@
         "modifiers": ["KEY_LEFTCTRL", "KEY_LEFTMETA"],
         "trigger": "KEY_T",
         "mode": "toggle",
-        "destination": "tmux",
-        "inject_to": "todo:0.0",
+        "destination": "tmux:todo:0.0",
         "append_enter": true
       }
     ]

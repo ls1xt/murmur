@@ -10,11 +10,14 @@ from murmur.injector.base import TextInjector
 logger = logging.getLogger(__name__)
 
 
+class TmuxUnavailableError(RuntimeError):
+    """Raised when the target tmux pane is not reachable."""
+
+
 class TmuxInjector(TextInjector):
     """Injects text into a specific tmux pane via `tmux send-keys`.
 
-    Created per-binding (not via the create_injector factory) since each
-    binding that uses inject_to="tmux:..." has its own fixed target pane.
+    Created per-binding since each tmux binding has its own fixed target pane.
     """
 
     def __init__(self, target: str, trailing_space: bool = True) -> None:
@@ -60,8 +63,13 @@ class TmuxInjector(TextInjector):
 
     def _run(self, cmd: list[str]) -> None:
         try:
-            subprocess.run(cmd, check=False, capture_output=True, timeout=5)
-        except FileNotFoundError:
-            logger.error("tmux not found; cannot inject into pane %r", self._target)
-        except OSError as e:
-            logger.error("tmux send-keys failed for %r: %s", self._target, e)
+            result = subprocess.run(cmd, check=False, capture_output=True, timeout=5)
+        except FileNotFoundError as e:
+            raise TmuxUnavailableError(
+                f"tmux binary not found; cannot inject into pane {self._target!r}"
+            ) from e
+        if result.returncode != 0:
+            raise TmuxUnavailableError(
+                f"tmux command failed for pane {self._target!r} "
+                f"(exit {result.returncode}): {result.stderr.decode(errors='replace').strip()}"
+            )

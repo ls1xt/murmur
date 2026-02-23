@@ -15,7 +15,13 @@ import threading
 import time
 import types
 
-from murmur.config import CONFIG_FILE, DictationConfig, HotkeyBinding
+from murmur.config import (
+    CONFIG_FILE,
+    ClipboardDestination,
+    DictationConfig,
+    HotkeyBinding,
+    TmuxDestination,
+)
 from murmur.errors import fatal
 from murmur.feedback.audio import AudioFeedback
 from murmur.feedback.notify import Notifier
@@ -24,6 +30,7 @@ from murmur.hotkey import create_hotkey_listener
 from murmur.hotkey.base import HotkeyListener
 from murmur.injector import create_injector
 from murmur.injector.base import TextInjector
+from murmur.injector.tmux import TmuxUnavailableError
 from murmur.transcriber import create_transcriber
 from murmur.transcriber.base import Transcriber
 
@@ -185,17 +192,17 @@ class DictationApp:
     def _build_binding_injectors(self) -> dict[int, TextInjector]:
         """Build a per-binding injector map.
 
-        Bindings with ``destination="tmux"`` get a dedicated
-        ``TmuxInjector`` targeting ``binding.inject_to``; all others map to
-        the shared default injector.
+        Bindings with a ``TmuxDestination`` get a dedicated
+        ``TmuxInjector`` targeting the destination's pane address; all others
+        map to the shared default injector.
         """
         from murmur.injector.tmux import TmuxInjector
 
         injectors: dict[int, TextInjector] = {}
         for binding in self.config.hotkey.bindings:
-            if binding.destination == "tmux":
+            if isinstance(binding.destination, TmuxDestination):
                 injectors[id(binding)] = TmuxInjector(
-                    target=binding.inject_to,
+                    target=binding.destination.target,
                     trailing_space=self.config.injector.trailing_space,
                 )
             else:
@@ -234,7 +241,7 @@ class DictationApp:
 
         ``binding`` is the full HotkeyBinding that was triggered.
         ``binding.mode`` is ``"push_to_talk"`` or ``"toggle"``.
-        ``binding.destination`` is ``"type"``, ``"clipboard"``, or ``"tmux"``.
+        ``binding.destination`` is a ``TypeDestination``, ``ClipboardDestination``, or ``TmuxDestination``.
         ``trigger`` is "hotkey" or "tray" and indicates what triggered recording.
         """
         self.maybe_reload_config()
@@ -256,7 +263,7 @@ class DictationApp:
             if time.monotonic() - self._last_deactivate_time < debounce_s:
                 return
             self._recording_active = True
-            self._clipboard_mode = binding.destination == "clipboard"
+            self._clipboard_mode = isinstance(binding.destination, ClipboardDestination)
             self._clipboard_buffer = []
             self._session_id += 1
             self._active_binding = binding
@@ -271,9 +278,7 @@ class DictationApp:
             "Recording started (trigger=%s mode=%s destination=%s language=%s)",
             trigger,
             binding.mode,
-            binding.destination
-            if binding.destination != "tmux"
-            else f"tmux:{binding.inject_to}",
+            binding.destination,
             lang or self.config.transcriber.language,
         )
         self.feedback.play_start()
@@ -405,6 +410,10 @@ class DictationApp:
             logger.info("Injecting final: %s", text)
             try:
                 self._active_injector.inject(text)
+            except TmuxUnavailableError:
+                logger.warning("tmux pane unavailable; falling back to clipboard")
+                self.injector.copy_to_clipboard(text)
+                self.notifier.error("tmux unavailable — text copied to clipboard")
             except Exception as e:
                 logger.error("Text injection failed: %s", e)
 
@@ -449,6 +458,17 @@ class DictationApp:
                 "ydotoold is not running. Start it with: systemctl --user start ydotool"
             )
 
+        # Warn (non-fatal) about tmux bindings whose pane isn't available yet
+        for binding in self.config.hotkey.bindings:
+            if isinstance(binding.destination, TmuxDestination):
+                inj = self._binding_injectors.get(id(binding))
+                if inj is not None and not inj.is_available():
+                    logger.warning(
+                        "tmux pane %r not found — text will fall back to clipboard "
+                        "until the session exists.",
+                        str(binding.destination),
+                    )
+
         if sys.platform == "darwin":
             _fkey = {f"KEY_F{i}" for i in range(1, 25)}
             for b in self.config.hotkey.bindings:
@@ -476,11 +496,7 @@ class DictationApp:
                 if binding.modifiers
                 else binding.trigger
             )
-            dest_label = (
-                f"tmux:{binding.inject_to}"
-                if binding.destination == "tmux"
-                else binding.destination
-            )
+            dest_label = str(binding.destination)
             parts = [f"{binding.mode.replace('_', ' ').title()} → {dest_label}"]
             if binding.language:
                 parts.append(f"lang={binding.language}")

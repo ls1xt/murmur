@@ -18,6 +18,40 @@ CONFIG_DIR: Final[Path] = Path.home() / ".config" / "murmur"
 CONFIG_FILE: Final[Path] = CONFIG_DIR / "config.json"
 
 
+@dataclass(frozen=True)
+class TypeDestination:
+    """Send transcribed text to the focused application via keystroke injection."""
+
+    kind: Literal["type"] = "type"
+
+    def __str__(self) -> str:
+        return "type"
+
+
+@dataclass(frozen=True)
+class ClipboardDestination:
+    """Copy transcribed text to the system clipboard."""
+
+    kind: Literal["clipboard"] = "clipboard"
+
+    def __str__(self) -> str:
+        return "clipboard"
+
+
+@dataclass(frozen=True)
+class TmuxDestination:
+    """Send transcribed text to a specific tmux pane."""
+
+    target: str  # pane address, e.g. "todo:0.0"
+    kind: Literal["tmux"] = "tmux"
+
+    def __str__(self) -> str:
+        return f"tmux:{self.target}"
+
+
+Destination = TypeDestination | ClipboardDestination | TmuxDestination
+
+
 @dataclass
 class HotkeyBinding:
     """A single hotkey binding mapping a key combination to an action.
@@ -28,17 +62,16 @@ class HotkeyBinding:
         mode: Activation mode.  ``"push_to_talk"`` records while the key is
             held and stops on release.  ``"toggle"`` starts recording on the
             first press and stops on a second press.
-        destination: Where the transcribed text is sent.  ``"type"`` types
-            the text into the currently focused application using keystroke
-            injection.  ``"clipboard"`` copies the full session text to the
-            system clipboard on completion.  ``"tmux"`` sends text to a
-            specific tmux pane; set ``inject_to`` to the target pane address
-            (e.g. ``"SESSION:WINDOW.PANE"``).
+        destination: Where the transcribed text is sent.  ``TypeDestination``
+            types the text into the currently focused application using
+            keystroke injection.  ``ClipboardDestination`` copies the full
+            session text to the system clipboard on completion.
+            ``TmuxDestination`` sends text to a specific tmux pane; the pane
+            address is encoded as ``"tmux:SESSION:WINDOW.PANE"``
+            (e.g. ``"tmux:todo:0.0"``).
         language: Per-binding language override.  An ISO 639-1 code or
             AssemblyAI regional variant (e.g. ``"de"``, ``"en_au"``).  When
             ``None``, the global transcriber language is used.
-        inject_to: Tmux pane address when ``destination == "tmux"``
-            (e.g. ``"todo:0.0"``).  Ignored for other destinations.
         append_enter: When ``True``, a Return key press is sent after the
             transcription is injected at the end of each session.
         suppress: When ``True``, installs an active CGEventTap to swallow the
@@ -50,9 +83,8 @@ class HotkeyBinding:
     )
     trigger: str = "KEY_SPACE"
     mode: Literal["push_to_talk", "toggle"] = "push_to_talk"
-    destination: Literal["type", "clipboard", "tmux"] = "type"
+    destination: Destination = field(default_factory=TypeDestination)
     language: str | None = None
-    inject_to: str = "default"
     append_enter: bool = False
     # suppress=True installs an active CGEventTap to swallow the key event
     suppress: bool = False
@@ -74,26 +106,26 @@ def _default_bindings() -> list[HotkeyBinding]:
             modifiers=[],
             trigger="KEY_F12",
             mode="push_to_talk",
-            destination="type",
+            destination=TypeDestination(),
             suppress=True,
         ),
         HotkeyBinding(
             modifiers=["KEY_LEFTCTRL", meta],
             trigger="KEY_M",
             mode="toggle",
-            destination="type",
+            destination=TypeDestination(),
         ),
         HotkeyBinding(
             modifiers=["KEY_LEFTCTRL", meta],
             trigger="KEY_C",
             mode="push_to_talk",
-            destination="clipboard",
+            destination=ClipboardDestination(),
         ),
         HotkeyBinding(
             modifiers=["KEY_LEFTCTRL", meta],
             trigger="KEY_V",
             mode="toggle",
-            destination="clipboard",
+            destination=ClipboardDestination(),
         ),
     ]
 
@@ -210,6 +242,54 @@ class TrayConfig:
     """System tray icon settings."""
 
     enabled: bool = True
+
+
+def _parse_destination(bd: dict[str, Any]) -> Destination | None:
+    """Parse destination from a binding dict, handling all migration paths.
+
+    Accepted formats:
+    - New:      ``destination: "type"`` / ``"clipboard"`` / ``"tmux:SESSION:WINDOW.PANE"``
+    - Old:      ``destination: "tmux"`` + ``inject_to: "SESSION:WINDOW.PANE"``
+    - Oldest:   ``inject_to: "tmux:SESSION:WINDOW.PANE"`` (no destination field)
+    - Migration: ``destination: "direct_inject"`` → TypeDestination
+    """
+    raw_dest = str(bd.get("destination", "type"))
+    raw_inject_to: str | None = str(bd["inject_to"]) if "inject_to" in bd else None
+
+    # Migrate legacy "direct_inject" value
+    if raw_dest == "direct_inject":
+        raw_dest = "type"
+
+    if raw_dest.startswith("tmux:"):
+        # New format: destination = "tmux:SESSION:WINDOW.PANE"
+        return TmuxDestination(target=raw_dest[len("tmux:") :])
+
+    if raw_dest == "tmux":
+        # Old format: destination="tmux" + inject_to="SESSION:WINDOW.PANE"
+        if raw_inject_to is None:
+            logger.error(
+                "Binding has destination='tmux' but no inject_to pane address. "
+                "Use destination='tmux:SESSION:WINDOW.PANE'. Binding skipped."
+            )
+            return None
+        # Handle very old inject_to="tmux:SESSION:..." format
+        target = (
+            raw_inject_to.removeprefix("tmux:")
+            if raw_inject_to.startswith("tmux:")
+            else raw_inject_to
+        )
+        return TmuxDestination(target=target)
+
+    # Very old format: inject_to="tmux:SESSION:..." with no destination field
+    if raw_inject_to is not None and raw_inject_to.startswith("tmux:"):
+        return TmuxDestination(target=raw_inject_to.removeprefix("tmux:"))
+
+    if raw_dest == "clipboard":
+        return ClipboardDestination()
+
+    if raw_dest != "type":
+        logger.warning("Unknown destination %r; defaulting to 'type'", raw_dest)
+    return TypeDestination()
 
 
 def _apply_section(data: dict[str, Any], key: str, target: object) -> None:
@@ -341,31 +421,15 @@ class DictationConfig:
                                     Literal["push_to_talk", "toggle"],
                                     bd["mode"],
                                 )
-                            if "destination" in bd:
-                                dest = str(bd["destination"])
-                                # Migrate old "direct_inject" value to "type"
-                                if dest == "direct_inject":
-                                    dest = "type"
-                                binding.destination = cast(
-                                    Literal["type", "clipboard", "tmux"],
-                                    dest,
-                                )
+                            dest = _parse_destination(bd)
+                            if dest is None:
+                                continue  # invalid binding, skip it
+                            binding.destination = dest
                             if "language" in bd:
                                 raw_lang: Any = bd["language"]
                                 binding.language = (
                                     str(raw_lang) if raw_lang is not None else None
                                 )
-                            if "inject_to" in bd:
-                                raw_inject_to = str(bd["inject_to"])
-                                # Migrate old inject_to="tmux:TARGET" to
-                                # destination="tmux" + inject_to="TARGET"
-                                if raw_inject_to.startswith("tmux:"):
-                                    binding.destination = "tmux"
-                                    binding.inject_to = raw_inject_to.removeprefix(
-                                        "tmux:"
-                                    )
-                                else:
-                                    binding.inject_to = raw_inject_to
                             if "append_enter" in bd:
                                 binding.append_enter = bool(bd["append_enter"])
                             if "suppress" in bd:

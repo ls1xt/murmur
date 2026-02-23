@@ -25,7 +25,7 @@ class HotkeyListener(ABC):
 
         The on_activate callback receives the full HotkeyBinding so the caller
         can behave differently per action and access binding-level settings
-        (language, inject_to, append_enter, etc.).
+        (language, destination, append_enter, etc.).
         """
         self.on_activate = on_activate
         self.on_deactivate = on_deactivate

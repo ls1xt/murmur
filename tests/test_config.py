@@ -11,12 +11,15 @@ import pytest
 
 from murmur.config import (
     CONFIG_DIR,
+    ClipboardDestination,
     DictationConfig,
     FeedbackConfig,
     HotkeyBinding,
     HotkeyConfig,
     InjectorConfig,
+    TmuxDestination,
     TranscriberConfig,
+    TypeDestination,
 )
 
 
@@ -31,14 +34,19 @@ class TestDefaultValues:
         modes = [b.mode for b in config.bindings]
         destinations = [b.destination for b in config.bindings]
         assert modes == ["push_to_talk", "toggle", "push_to_talk", "toggle"]
-        assert destinations == ["type", "type", "clipboard", "clipboard"]
+        assert destinations == [
+            TypeDestination(),
+            TypeDestination(),
+            ClipboardDestination(),
+            ClipboardDestination(),
+        ]
 
     def test_hotkey_binding_defaults(self) -> None:
         binding = HotkeyBinding()
         assert binding.modifiers == ["KEY_LEFTCTRL", "KEY_LEFTALT"]
         assert binding.trigger == "KEY_SPACE"
         assert binding.mode == "push_to_talk"
-        assert binding.destination == "type"
+        assert binding.destination == TypeDestination()
 
     def test_hotkey_default_bindings_keys(self) -> None:
         config = HotkeyConfig()
@@ -136,7 +144,7 @@ class TestFromDict:
         assert len(config.hotkey.bindings) == 1
         assert config.hotkey.bindings[0].trigger == "KEY_X"
         assert config.hotkey.bindings[0].mode == "toggle"
-        assert config.hotkey.bindings[0].destination == "clipboard"
+        assert config.hotkey.bindings[0].destination == ClipboardDestination()
 
     def testfrom_dict_migrates_direct_inject_to_type(self) -> None:
         """Old 'direct_inject' destination value is migrated to 'type'."""
@@ -151,10 +159,10 @@ class TestFromDict:
             }
         }
         config = DictationConfig.from_dict(data)
-        assert config.hotkey.bindings[0].destination == "type"
+        assert config.hotkey.bindings[0].destination == TypeDestination()
 
     def testfrom_dict_migrates_tmux_inject_to_prefix(self) -> None:
-        """Old inject_to='tmux:TARGET' is migrated to destination='tmux' + inject_to='TARGET'."""
+        """Old inject_to='tmux:TARGET' is migrated to TmuxDestination with the correct target."""
         data: dict[str, Any] = {
             "hotkey": {
                 "bindings": [
@@ -166,8 +174,9 @@ class TestFromDict:
             }
         }
         config = DictationConfig.from_dict(data)
-        assert config.hotkey.bindings[0].destination == "tmux"
-        assert config.hotkey.bindings[0].inject_to == "todo:0.0"
+        assert config.hotkey.bindings[0].destination == TmuxDestination(
+            target="todo:0.0"
+        )
 
     def testfrom_dict_tmux_destination_explicit(self) -> None:
         """New destination='tmux' with inject_to pane address deserializes correctly."""
@@ -184,8 +193,9 @@ class TestFromDict:
             }
         }
         config = DictationConfig.from_dict(data)
-        assert config.hotkey.bindings[0].destination == "tmux"
-        assert config.hotkey.bindings[0].inject_to == "todo:0.0"
+        assert config.hotkey.bindings[0].destination == TmuxDestination(
+            target="todo:0.0"
+        )
 
     def testfrom_dict_applies_transcriber_settings(self) -> None:
         data: dict[str, Any] = {

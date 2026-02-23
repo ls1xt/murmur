@@ -14,7 +14,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from murmur.app import DictationApp
-from murmur.config import DictationConfig, FeedbackConfig, HotkeyBinding, TrayConfig
+from murmur.config import (
+    ClipboardDestination,
+    DictationConfig,
+    FeedbackConfig,
+    HotkeyBinding,
+    TrayConfig,
+)
 from murmur.main import main
 
 
@@ -319,7 +325,9 @@ class TestClipboardMode:
     def test_activate_clipboard_sets_flag(self, mocker: Any) -> None:
         app, _, _, _ = _make_app(mocker)
 
-        app.on_activate(HotkeyBinding(mode="push_to_talk", destination="clipboard"))
+        app.on_activate(
+            HotkeyBinding(mode="push_to_talk", destination=ClipboardDestination())
+        )
         assert app.clipboard_mode is True
 
     def test_activate_push_to_talk_clears_flag(self, mocker: Any) -> None:
