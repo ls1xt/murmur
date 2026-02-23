@@ -192,7 +192,7 @@ class TestAssemblyAITranscriber:
 
 
 class TestAssemblyAIErrorHandling:
-    """Test AssemblyAI transcriber fatal error exits."""
+    """Test AssemblyAI transcriber error handling."""
 
     def _mock_v3(self, mocker: Any) -> MagicMock:
         """Patch the _v3 module reference and threading to use mocks."""
@@ -214,19 +214,25 @@ class TestAssemblyAIErrorHandling:
         )
         return mock_v3
 
-    def test_stream_error_calls_fatal(self, mocker: Any) -> None:
+    def test_stream_error_generic_is_recoverable(self, mocker: Any) -> None:
+        """Generic (non-auth) errors must not kill the daemon."""
         from murmur.transcriber.assemblyai import AssemblyAITranscriber
 
         self._mock_v3(mocker)
         mock_fatal = mocker.patch("murmur.transcriber.assemblyai.fatal_from_thread")
+        mock_thread_cls = mocker.patch("murmur.transcriber.assemblyai.threading.Thread")
+        mock_thread_cls.return_value = MagicMock()
 
         config = TranscriberConfig(api_key="test_key")
         transcriber = AssemblyAITranscriber(config)
         transcriber.on_stream_error(MagicMock(), "some error", transcriber.session_gen)
 
-        mock_fatal.assert_called_once()
-        call_msg: str = mock_fatal.call_args[0][0]
-        assert "WebSocket error" in call_msg
+        mock_fatal.assert_not_called()
+        # Cleanup must be scheduled in a background thread.
+        mock_thread_cls.assert_called()
+        thread_call = mock_thread_cls.call_args
+        target = thread_call[1].get("target") or thread_call[0][0]
+        assert target == transcriber._cleanup_after_error
 
     def test_stream_error_classifies_1008(self, mocker: Any) -> None:
         from murmur.transcriber.assemblyai import AssemblyAITranscriber
@@ -245,11 +251,14 @@ class TestAssemblyAIErrorHandling:
         assert "auth error" in call_msg
         assert "1008" in call_msg
 
-    def test_stream_error_classifies_3005(self, mocker: Any) -> None:
+    def test_stream_error_classifies_3005_is_recoverable(self, mocker: Any) -> None:
+        """Code-3005 (session expired) must not kill the daemon."""
         from murmur.transcriber.assemblyai import AssemblyAITranscriber
 
         self._mock_v3(mocker)
         mock_fatal = mocker.patch("murmur.transcriber.assemblyai.fatal_from_thread")
+        mock_thread_cls = mocker.patch("murmur.transcriber.assemblyai.threading.Thread")
+        mock_thread_cls.return_value = MagicMock()
 
         config = TranscriberConfig(api_key="test_key")
         transcriber = AssemblyAITranscriber(config)
@@ -257,10 +266,14 @@ class TestAssemblyAIErrorHandling:
             MagicMock(), "Session error: 3005", transcriber.session_gen
         )
 
-        mock_fatal.assert_called_once()
-        call_msg: str = mock_fatal.call_args[0][0]
-        assert "session expired" in call_msg
-        assert "3005" in call_msg
+        mock_fatal.assert_not_called()
+        mock_thread_cls.assert_called()
+        thread_call = mock_thread_cls.call_args
+        target = thread_call[1].get("target") or thread_call[0][0]
+        assert target == transcriber._cleanup_after_error
+        # Verify the message passed to cleanup contains the right classification
+        args = thread_call[1].get("args") or thread_call[0][1]
+        assert "session expired" in args[0].lower() or "3005" in args[0]
 
     def test_unexpected_termination_spawns_reconnect(self, mocker: Any) -> None:
         from murmur.transcriber.assemblyai import AssemblyAITranscriber

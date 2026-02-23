@@ -621,8 +621,35 @@ class AssemblyAITranscriber(Transcriber):
             f"WebSocket connection lost and reconnect failed after {attempts} attempts"
         )
 
+    def _cleanup_after_error(self, message: str) -> None:
+        """Clean up session state after a non-fatal error.
+
+        Runs in a background thread so the SDK's internal thread is not
+        blocked.  Closes the mic stream, resets streaming flags, and
+        notifies the app layer via the on_error callback.
+        """
+        if self._mic_stream is not None:
+            with contextlib.suppress(Exception):
+                self._mic_stream.close()
+            self._mic_stream = None
+        # Client is already dead — the error caused the failure.
+        self._client = None
+        # Reset streaming flag so the next start() can proceed.
+        self._is_streaming = False
+        # Ensure stop_done is set so start() does not deadlock waiting for a
+        # stop() that will never complete.
+        self._stop_done.set()
+        logger.error("Streaming error (recoverable): %s", message)
+        if self.on_error is not None:
+            self.on_error(Exception(message))
+
     def on_stream_error(self, client: Any, error: Any, gen: int) -> None:
         """Handle streaming error.
+
+        Auth errors (code 1008) are fatal — the daemon cannot function
+        without a valid API key.  All other errors are handled
+        non-fatally: the session is cleaned up and the app is notified via
+        the on_error callback so the daemon keeps running.
 
         Stale callbacks from a previous session (gen mismatch) are ignored.
         """
@@ -647,27 +674,33 @@ class AssemblyAITranscriber(Transcriber):
         # directly because str(StreamingError("", code=1006)) == "" (empty).
         error_code: int | None = getattr(error, "code", None)
 
-        # Classify error codes for user-friendly messages
+        # Auth errors are fatal — the daemon cannot recover without a valid key.
         if error_code == 1008 or "1008" in error_str:
-            message = (
+            fatal_from_thread(
                 "AssemblyAI auth error (code 1008): "
                 "check your API key and account balance"
             )
-        elif error_code == 1011 or "1011" in error_str:
+            return
+
+        # Classify remaining errors for user-friendly messages, then recover.
+        if error_code == 1011 or "1011" in error_str:
             message = (
-                "AssemblyAI rejected the session (code 1011 — server internal error). "
-                "Common cause: too many keyterms (max 100, each ≤50 chars) or "
-                "an unsupported parameter combination."
+                "AssemblyAI rejected the session (code 1011). "
+                "Common cause: too-short recording, too many keyterms "
+                "(max 100, each ≤50 chars), or an unsupported parameter."
             )
         elif "3005" in error_str:
             message = "AssemblyAI session expired (code 3005)"
         elif not error_str:
             # Code 1006 = abnormal closure (TCP dropped, no close frame).
-            # This often means a concurrent session caused the server to drop
-            # one connection, or a transient network issue.
             code_str = f" (code {error_code})" if error_code is not None else ""
             message = f"WebSocket connection closed unexpectedly{code_str}"
         else:
             message = f"WebSocket error: {error_str}"
 
-        fatal_from_thread(message)
+        # Clean up in a background thread; do not block the SDK's thread.
+        threading.Thread(
+            target=self._cleanup_after_error,
+            args=(message,),
+            daemon=True,
+        ).start()

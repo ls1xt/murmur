@@ -77,6 +77,7 @@ class DictationApp:
             False  # set synchronously in on_activate/on_deactivate
         )
         self._last_deactivate_time: float = 0.0  # monotonic time of last deactivation
+        self._recording_start_time: float = 0.0  # monotonic time of last activation
 
         # Config hot-reload: track mtime so we can reload on next activation
         try:
@@ -262,6 +263,7 @@ class DictationApp:
             # causing runaway start/stop cycles without this guard.
             if time.monotonic() - self._last_deactivate_time < debounce_s:
                 return
+            self._recording_start_time = time.monotonic()
             self._recording_active = True
             self._clipboard_mode = isinstance(binding.destination, ClipboardDestination)
             self._clipboard_buffer = []
@@ -293,6 +295,23 @@ class DictationApp:
         with self._lock:
             if not self._recording_active:
                 return  # already stopped
+            # Guard: for toggle mode, ignore deactivations within 200 ms of
+            # starting.  This prevents stop_on_keypress from firing on a key
+            # pressed at the same moment as (or just after) the toggle hotkey
+            # that activated recording.  push_to_talk is unaffected — the user
+            # may legitimately release the key very quickly.
+            if (
+                self._active_binding is not None
+                and self._active_binding.mode == "toggle"
+            ):
+                elapsed = time.monotonic() - self._recording_start_time
+                if elapsed < 0.200:
+                    logger.debug(
+                        "Ignoring deactivate: toggle recording too recent "
+                        "(%.0f ms elapsed, min 200 ms)",
+                        elapsed * 1000,
+                    )
+                    return
             self._recording_active = False
             self._last_deactivate_time = time.monotonic()
         logger.info("Recording stopped")
@@ -423,6 +442,13 @@ class DictationApp:
         logger.error("Transcription error: %s", error)
         self.notifier.error(str(error))
         self.tray.set_state("error", reason=str(error))
+        # Reset recording state so the daemon stays functional after a
+        # non-fatal transcriber error (e.g. too-short audio rejected by API).
+        with self._lock:
+            if self._recording_active:
+                self._recording_active = False
+                self._last_deactivate_time = time.monotonic()
+                logger.info("Recording state reset after transcriber error")
 
     def run(self) -> None:
         """Start the dictation app. Blocks until interrupted."""
