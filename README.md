@@ -25,8 +25,17 @@ thousands of sessions before you spend a cent. [Get a free key →](https://www.
 
 ## Installation
 
+**macOS — Homebrew (recommended):**
+
+```bash
+brew tap ls1xt/murmur https://github.com/ls1xt/homebrew-murmur
+brew install --HEAD ls1xt/murmur/murmur
+```
+
 > [!NOTE]
-> Homebrew, AUR, and PyPI packages are in preparation. Install from source for now:
+> `--HEAD` installs the latest development build. A stable release is coming soon.
+
+**From source (macOS & Linux):**
 
 ```bash
 git clone https://github.com/ls1xt/murmur.git
@@ -192,6 +201,23 @@ Enable ydotool:
 ```bash
 systemctl --user enable --now ydotool
 ```
+
+---
+
+## 🍎 System setup (macOS)
+
+Murmur reads global key events and injects text — both require **Accessibility** permission
+for the app that runs murmur (your terminal, or the murmur binary itself when running as a daemon).
+
+Grant it before starting the daemon to avoid a silent failure:
+
+**System Settings → Privacy & Security → Accessibility → add your terminal app**
+(Terminal, iTerm2, Alacritty, Ghostty, etc.)
+
+If you installed via Homebrew and use `murmur daemon enable` (launchd), you may also need
+to add the `murmur` or `python3` binary directly when prompted by macOS.
+
+No other system dependencies are required on macOS.
 
 ---
 

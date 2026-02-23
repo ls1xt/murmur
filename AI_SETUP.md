@@ -69,12 +69,29 @@ ydotool type "hello"
 
 **macOS:**
 
-No system dependencies needed beyond Python 3.13+. Accessibility permission is
-required — it will be prompted after first run.
+No system dependencies needed beyond Python 3.13+.
+
+**Accessibility permission is required** for murmur to detect global hotkeys and inject
+text. Grant it proactively before starting the daemon to avoid a silent failure:
+
+System Settings → Privacy & Security → Accessibility → add their terminal app
+(Terminal, iTerm2, Alacritty, Ghostty, etc.).
+
+If they use `murmur daemon enable` (launchd service), macOS may also prompt to add
+the `murmur` or `python3` binary — approve it.
 
 ---
 
 ## Step 3: Install murmur
+
+**macOS — Homebrew (recommended):**
+
+```bash
+brew tap ls1xt/murmur https://github.com/ls1xt/homebrew-murmur
+brew install --HEAD ls1xt/murmur/murmur
+```
+
+**From source (macOS & Linux):**
 
 ```bash
 git clone https://github.com/ls1xt/murmur.git
