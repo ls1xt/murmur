@@ -48,6 +48,12 @@ _MODIFIER_KEYS: frozenset[Key] = frozenset(
     }
 )
 
+# Characters produced by Enter/Return keys.  pynput's canonical() strips the
+# vk from keys that have a char, so the Return key (vk=36, char='\r') comes
+# back as KeyCode(char='\r') — not Key.enter (which is KeyCode(vk=36)).
+# We must check by character to reliably exclude Enter from stop_on_keypress.
+_ENTER_CHARS: frozenset[str] = frozenset({"\r", "\n"})
+
 
 # ---------------------------------------------------------------------------
 # Evdev-to-pynput canonical key translation table
@@ -516,12 +522,18 @@ class PynputHotkeyListener(HotkeyListener):
         # keypresses.  Enter is excluded so users can press Enter mid-dictation
         # without stopping the session.  Injected events are already filtered
         # above (injected=True guard), so only genuine user input reaches here.
+        #
+        # NOTE: pynput's canonical() strips the vk from keys that carry a char,
+        # so the Return key (raw: KeyCode(char='\r', vk=36)) becomes
+        # KeyCode(char='\r') after canonicalisation — NOT Key.enter
+        # (KeyCode(vk=36)).  Both forms must be excluded.
         if (
             not any_binding_matched
             and self._stop_on_keypress
             and self._active_action == "toggle"
             and canonical not in _MODIFIER_KEYS
             and canonical is not Key.enter
+            and not (isinstance(canonical, KeyCode) and canonical.char in _ENTER_CHARS)
             and self.on_deactivate is not None
         ):
             logger.debug("stop_on_keypress: stopping recording (key=%r)", canonical)
