@@ -158,6 +158,9 @@ Tested on **macOS Sequoia (Apple Silicon)** and **Linux/Wayland** (Sway).
 Other Wayland compositors should work but are untested. X11 and Windows are not supported.
 Contributions and test reports welcome.
 
+> [!NOTE]
+> **macOS tray icon** — The system tray icon is not yet supported on macOS. The daemon runs fine without it; a native macOS status bar item is planned for a future release.
+
 ---
 
 ## ⚙️ Configuration
@@ -239,6 +242,11 @@ systemctl --user enable ydotool
 systemctl --user start ydotool
 # test: ydotool type "hello world"
 ```
+
+### Tray icon not visible on macOS
+
+The system tray icon is not yet supported on macOS — it is planned as a future feature.
+The daemon works normally without it; you can check status with `murmur daemon status`.
 
 ### Hotkey not detected on macOS
 
