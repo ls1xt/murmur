@@ -349,6 +349,20 @@ class EvdevHotkeyListener(HotkeyListener):
                         fatal_from_thread(f"Input device disconnected: {dev_path}")
         finally:
             selector.close()
+            # Safety net: ungrab all devices whenever the listen loop exits,
+            # whether by normal stop() or by an unexpected exception.  Without
+            # this, a crash inside a hotkey callback (e.g. on_activate calling
+            # stop() and triggering RuntimeError: cannot join current thread)
+            # would leave keyboards grabbed with no forwarding thread running,
+            # causing a complete keyboard lockout until the process is killed.
+            for _entry in list(self._devices):
+                with contextlib.suppress(OSError):
+                    _entry["device"].ungrab()  # type: ignore[reportUnknownMemberType]
+                with contextlib.suppress(OSError):
+                    _entry["uinput"].close()  # type: ignore[reportUnknownMemberType]
+                with contextlib.suppress(OSError):
+                    _entry["device"].close()  # type: ignore[reportUnknownMemberType]
+            self._devices.clear()
 
     def check_pending_releases(self, now: float | None = None) -> None:
         """Fire debounced releases whose window has elapsed.
@@ -532,7 +546,13 @@ class EvdevHotkeyListener(HotkeyListener):
         """Stop listening and release devices."""
         self._stop_event.set()
         if self._thread:
-            self._thread.join(timeout=2.0)
+            # Do not join the current thread -- stop() may be called from
+            # within the listener thread itself (e.g. via an on_activate
+            # callback that triggers a config reload).  Joining would raise
+            # RuntimeError: cannot join current thread.  The _listen_loop
+            # finally block handles device cleanup when the thread exits.
+            if self._thread is not threading.current_thread():
+                self._thread.join(timeout=2.0)
             self._thread = None
 
         for entry in self._devices:

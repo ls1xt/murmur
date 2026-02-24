@@ -228,14 +228,31 @@ class DictationApp:
         self.config = new_config
         # Rebuild binding injectors with new config
         self._binding_injectors = self._build_binding_injectors()
-        # Restart hotkey listener with new bindings
-        self.hotkey.stop()
-        self.hotkey = create_hotkey_listener(new_config.hotkey)
-        self.hotkey.set_callbacks(
+        # Restart hotkey listener with new bindings.
+        # This MUST happen on a separate thread: on_activate (and therefore
+        # maybe_reload_config) is called from within the listener thread, so
+        # calling self.hotkey.stop() inline would make the listener thread try
+        # to join() itself -> RuntimeError: cannot join current thread.
+        old_hotkey = self.hotkey
+        new_hotkey = create_hotkey_listener(new_config.hotkey)
+        new_hotkey.set_callbacks(
             on_activate=self.on_activate,
             on_deactivate=self.on_deactivate,
         )
-        self.hotkey.start()
+        self.hotkey = new_hotkey
+
+        def _do_hotkey_reload() -> None:
+            old_hotkey.stop()  # ungrabs keyboards; safe to join old thread from here
+            try:
+                new_hotkey.start()
+            except Exception as exc:
+                logger.error(
+                    "Failed to restart hotkey listener after config reload: %s", exc
+                )
+
+        threading.Thread(
+            target=_do_hotkey_reload, daemon=True, name="hotkey-reload"
+        ).start()
 
     def on_activate(self, binding: HotkeyBinding, trigger: str = "hotkey") -> None:
         """Called when the hotkey is activated (start recording).
