@@ -166,7 +166,7 @@ class TranscriberConfig:
     inject_partials: bool = False
     reconnect_attempts: int = 5
     reconnect_delay_ms: int = 1000
-    mic_device: str | None = None
+    mic_device: str | int | None = None
 
     def validate(self) -> None:
         """Warn about keyterms that violate AssemblyAI's API limits.
@@ -256,8 +256,26 @@ def _parse_destination(bd: dict[str, Any]) -> Destination | None:
     - Old:      ``destination: "tmux"`` + ``inject_to: "SESSION:WINDOW.PANE"``
     - Oldest:   ``inject_to: "tmux:SESSION:WINDOW.PANE"`` (no destination field)
     - Migration: ``destination: "direct_inject"`` → TypeDestination
+    - Saved:    ``destination: {"kind": "type"}`` (dataclasses.asdict() output) → TypeDestination
     """
-    raw_dest = str(bd.get("destination", "type"))
+    raw_value = bd.get("destination", "type")
+    # Handle destinations saved by config.save() as dataclass dicts
+    # (e.g. {"kind": "type"}, {"kind": "clipboard"}, {"kind": "tmux", "target": "..."})
+    if isinstance(raw_value, dict):
+        kind = raw_value.get("kind", "type")
+        if kind == "tmux":
+            target = raw_value.get("target", "")
+            if target:
+                return TmuxDestination(target=target)
+            logger.error(
+                "Binding destination dict has kind='tmux' but no target. Binding skipped."
+            )
+            return None
+        elif kind == "clipboard":
+            return ClipboardDestination()
+        else:
+            return TypeDestination()
+    raw_dest = str(raw_value)
     raw_inject_to: str | None = str(bd["inject_to"]) if "inject_to" in bd else None
 
     # Migrate legacy "direct_inject" value
@@ -375,7 +393,9 @@ class DictationConfig:
             )
 
         if mic_device := os.environ.get("MURMUR_MIC_DEVICE"):
-            config.transcriber.mic_device = mic_device
+            config.transcriber.mic_device = (
+                int(mic_device) if mic_device.isdigit() else mic_device
+            )
 
         config.transcriber.validate()
 

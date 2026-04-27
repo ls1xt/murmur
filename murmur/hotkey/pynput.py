@@ -445,14 +445,16 @@ class PynputHotkeyListener(HotkeyListener):
         Canonicalizes the key (unifying left/right modifier variants), adds
         it to the held set, then checks all bindings for a match.
 
-        ``injected`` is True for synthetic events posted by pynput's own
-        Controller (e.g. from controller.type()).  We skip those to avoid
-        false hotkey triggers and unnecessary _held churn.
+        ``injected`` was previously used to skip synthetic events from pynput's
+        own Controller, but on macOS 26 (Tahoe) physical keyboard events can
+        also arrive with a non-zero UnixProcessID (triggering injected=True),
+        causing all physical keypresses to be silently dropped.  The guard is
+        now removed because murmur's own text injection (vk=0, no modifiers)
+        cannot match any configured hotkey binding (which require modifier
+        combinations or specific function keys like F12).
         """
         if key is None:
             return
-        if injected:
-            return  # ignore synthetic events from our own controller
 
         # Capture the hardware VK before canonical() -- it may be stripped.
         # On macOS, Option+M produces 'µ' at the character level but the
@@ -549,8 +551,6 @@ class PynputHotkeyListener(HotkeyListener):
         """
         if key is None:
             return
-        if injected:
-            return  # ignore synthetic releases from our own controller
 
         raw_vk: int | None = getattr(key, "vk", None)
 

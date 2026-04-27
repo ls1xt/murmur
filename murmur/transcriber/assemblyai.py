@@ -24,6 +24,13 @@ from murmur.transcriber.base import Transcriber
 logger = logging.getLogger(__name__)
 
 
+def _coerce_device(device: str | int | None) -> str | int | None:
+    """Convert a numeric string device ID to int so sounddevice treats it as an index."""
+    if isinstance(device, str) and device.isdigit():
+        return int(device)
+    return device
+
+
 def _rms_level(data: bytes) -> float:
     """Compute RMS audio level from PCM s16le bytes."""
     import struct as _struct
@@ -257,7 +264,7 @@ class AssemblyAITranscriber(Transcriber):
 
             mic = _CallbackMicStream(
                 sample_rate=self._config.sample_rate,
-                device=self._config.mic_device,
+                device=_coerce_device(self._config.mic_device),
             )
             _time.sleep(0.2)
             mic.close()
@@ -376,7 +383,7 @@ class AssemblyAITranscriber(Transcriber):
         try:
             self._mic_stream = _CallbackMicStream(
                 sample_rate=self._config.sample_rate,
-                device=self._config.mic_device,
+                device=_coerce_device(self._config.mic_device),
             )
         except Exception as e:
             self._is_streaming = False
