@@ -1,11 +1,15 @@
 """
 CGEvent-based text injector for macOS.
 
-Posts key events at ``kCGSessionEventTap`` (pipeline level 1), bypassing
-any active ``kCGHIDEventTap`` (level 0) tap such as the F12 darwin_intercept
-suppressor.  This avoids the serialization bottleneck that causes character
-reordering when pynput's ``controller.type()`` and an active HID tap compete
-for the same listener thread.
+Posts key events at ``kCGAnnotatedSessionEventTap`` (pipeline level 2), which
+is inserted into the event pipeline *after* session-level taps (level 1).
+pynput's keyboard.Listener installs its CGEventTap at ``kCGSessionEventTap``
+(level 1), so events posted at level 2 are never seen by the listener — they
+go directly to the target application.  This prevents injected characters from
+triggering pynput callbacks such as ``stop_on_keypress``.
+
+Using level 2 also bypasses any active ``kCGHIDEventTap`` (level 0) tap such
+as the F12 darwin_intercept suppressor, for the same reason as level 1.
 
 Character encoding: uses ``CGEventKeyboardSetUnicodeString`` to inject Unicode
 directly without mapping characters to virtual keycodes.  Works for all BMP
@@ -129,16 +133,16 @@ class CGEventInjector(TextInjector):
         from Quartz import (  # pyright: ignore[reportMissingImports]
             CGEventCreateKeyboardEvent,
             CGEventPost,
-            kCGSessionEventTap,
+            kCGAnnotatedSessionEventTap,
         )
 
         source = self._get_source()
         logger.debug("Injecting %d backspaces", count)
         for _ in range(count):
             e_dn = CGEventCreateKeyboardEvent(source, _VK_DELETE, True)
-            CGEventPost(kCGSessionEventTap, e_dn)
+            CGEventPost(kCGAnnotatedSessionEventTap, e_dn)
             e_up = CGEventCreateKeyboardEvent(source, _VK_DELETE, False)
-            CGEventPost(kCGSessionEventTap, e_up)
+            CGEventPost(kCGAnnotatedSessionEventTap, e_up)
             if self._key_delay_s > 0:
                 time.sleep(self._key_delay_s)
 
@@ -147,14 +151,14 @@ class CGEventInjector(TextInjector):
         from Quartz import (  # pyright: ignore[reportMissingImports]
             CGEventCreateKeyboardEvent,
             CGEventPost,
-            kCGSessionEventTap,
+            kCGAnnotatedSessionEventTap,
         )
 
         source = self._get_source()
         e_dn = CGEventCreateKeyboardEvent(source, _VK_RETURN, True)
-        CGEventPost(kCGSessionEventTap, e_dn)
+        CGEventPost(kCGAnnotatedSessionEventTap, e_dn)
         e_up = CGEventCreateKeyboardEvent(source, _VK_RETURN, False)
-        CGEventPost(kCGSessionEventTap, e_up)
+        CGEventPost(kCGAnnotatedSessionEventTap, e_up)
 
     def copy_to_clipboard(self, text: str) -> None:
         """Copy text to the macOS clipboard via pbcopy (no paste keystroke)."""
@@ -186,7 +190,7 @@ class CGEventInjector(TextInjector):
         return self._source  # type: ignore[return-value]
 
     def _type(self, text: str) -> None:
-        """Post key-down/key-up pairs for each character at session tap level.
+        """Post key-down/key-up pairs for each character at annotated-session level.
 
         Uses CGEventKeyboardSetUnicodeString (vk=0) so that apps receive the
         exact Unicode character regardless of keyboard layout.  Electron,
@@ -197,18 +201,18 @@ class CGEventInjector(TextInjector):
             CGEventCreateKeyboardEvent,
             CGEventKeyboardSetUnicodeString,
             CGEventPost,
-            kCGSessionEventTap,
+            kCGAnnotatedSessionEventTap,
         )
 
         source = self._get_source()
         for char in text:
             e_dn = CGEventCreateKeyboardEvent(source, 0, True)
             CGEventKeyboardSetUnicodeString(e_dn, 1, char)
-            CGEventPost(kCGSessionEventTap, e_dn)
+            CGEventPost(kCGAnnotatedSessionEventTap, e_dn)
 
             e_up = CGEventCreateKeyboardEvent(source, 0, False)
             CGEventKeyboardSetUnicodeString(e_up, 1, char)
-            CGEventPost(kCGSessionEventTap, e_up)
+            CGEventPost(kCGAnnotatedSessionEventTap, e_up)
 
             if self._key_delay_s > 0:
                 time.sleep(self._key_delay_s)

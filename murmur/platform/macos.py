@@ -37,6 +37,28 @@ def check_accessibility() -> bool:
         return True
 
 
+def check_secure_input() -> bool:
+    """Return True if macOS Secure Keyboard Entry is NOT blocking key events.
+
+    When any app calls EnableSecureEventInput() (e.g. terminal's Secure
+    Keyboard Entry setting), macOS silently drops kCGEventKeyDown/KeyUp from
+    ALL CGEventTaps system-wide. Modifier-key (FlagsChanged) events still
+    arrive, so the listener appears to start correctly but never fires hotkeys.
+
+    Returns True (safe to proceed) when SecureEventInput is NOT active.
+    Returns False when SecureEventInput IS active — caller should fatal.
+    """
+    try:
+        import ctypes
+        import ctypes.util
+
+        carbon = ctypes.CDLL(ctypes.util.find_library("Carbon"))
+        carbon.IsSecureEventInputEnabled.restype = ctypes.c_bool
+        return not bool(carbon.IsSecureEventInputEnabled())
+    except Exception:
+        return True  # can't check, allow startup
+
+
 def check_microphone() -> bool:
     """Return True if this process has macOS Microphone permission.
 

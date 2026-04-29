@@ -482,13 +482,23 @@ class DictationApp:
         ).start()
 
         if sys.platform == "darwin":
-            from murmur.platform.macos import check_accessibility, check_microphone
+            from murmur.platform.macos import (
+                check_accessibility,
+                check_microphone,
+                check_secure_input,
+            )
 
             if not check_accessibility():
                 fatal(
                     "Accessibility permission required for keyboard monitoring.\n"
                     "Go to System Settings -> Privacy & Security -> Accessibility\n"
                     "and enable Terminal (or your Python interpreter)."
+                )
+            if not check_secure_input():
+                fatal(
+                    "Secure Keyboard Entry is active in your terminal.\n"
+                    "macOS blocks all key events from hotkey listeners when this is on.\n"
+                    "Disable it: iTerm2 / Terminal menu -> Secure Keyboard Entry (uncheck)."
                 )
             if not check_microphone():
                 fatal(
