@@ -1,15 +1,14 @@
 """
 CGEvent-based text injector for macOS.
 
-Posts key events at ``kCGAnnotatedSessionEventTap`` (pipeline level 2), which
-is inserted into the event pipeline *after* session-level taps (level 1).
-pynput's keyboard.Listener installs its CGEventTap at ``kCGSessionEventTap``
-(level 1), so events posted at level 2 are never seen by the listener — they
-go directly to the target application.  This prevents injected characters from
-triggering pynput callbacks such as ``stop_on_keypress``.
+Posts key events at ``kCGSessionEventTap`` (pipeline level 1).  pynput's
+Listener is also at level 1 and does see injected events (``injected=True``).
+The ``_is_injecting`` flag in ``PynputHotkeyListener`` suppresses
+``stop_on_keypress`` while injection is active — that is the correct guard.
 
-Using level 2 also bypasses any active ``kCGHIDEventTap`` (level 0) tap such
-as the F12 darwin_intercept suppressor, for the same reason as level 1.
+Injecting at ``kCGAnnotatedSessionEventTap`` (level 2) was tried but caused
+double-delivery in browser text fields (each character appeared twice), so
+level 1 is used instead.
 
 Character encoding: uses ``CGEventKeyboardSetUnicodeString`` to inject Unicode
 directly without mapping characters to virtual keycodes.  Works for all BMP
@@ -63,12 +62,12 @@ def _sanitize_text(text: str) -> str:
 
 
 class CGEventInjector(TextInjector):
-    """Injects text via CGEvent at kCGSessionEventTap level.
+    """Injects text via CGEvent at kCGSessionEventTap (pipeline level 1).
 
     Posts key-down/key-up pairs for each character using
-    ``CGEventKeyboardSetUnicodeString``.  Events are inserted into the event
-    pipeline at session level (after HID tap), so they bypass any active
-    darwin_intercept CGEventTap installed by PynputHotkeyListener.
+    ``CGEventKeyboardSetUnicodeString``.  pynput's listener sees these events
+    but ``PynputHotkeyListener`` suppresses ``stop_on_keypress`` via the
+    ``_is_injecting`` flag while injection is in progress.
 
     Requires Accessibility permission (System Preferences > Privacy &
     Security > Accessibility) -- same requirement as pynput injection.
@@ -133,16 +132,16 @@ class CGEventInjector(TextInjector):
         from Quartz import (  # pyright: ignore[reportMissingImports]
             CGEventCreateKeyboardEvent,
             CGEventPost,
-            kCGAnnotatedSessionEventTap,
+            kCGSessionEventTap,
         )
 
         source = self._get_source()
         logger.debug("Injecting %d backspaces", count)
         for _ in range(count):
             e_dn = CGEventCreateKeyboardEvent(source, _VK_DELETE, True)
-            CGEventPost(kCGAnnotatedSessionEventTap, e_dn)
+            CGEventPost(kCGSessionEventTap, e_dn)
             e_up = CGEventCreateKeyboardEvent(source, _VK_DELETE, False)
-            CGEventPost(kCGAnnotatedSessionEventTap, e_up)
+            CGEventPost(kCGSessionEventTap, e_up)
             if self._key_delay_s > 0:
                 time.sleep(self._key_delay_s)
 
@@ -151,14 +150,14 @@ class CGEventInjector(TextInjector):
         from Quartz import (  # pyright: ignore[reportMissingImports]
             CGEventCreateKeyboardEvent,
             CGEventPost,
-            kCGAnnotatedSessionEventTap,
+            kCGSessionEventTap,
         )
 
         source = self._get_source()
         e_dn = CGEventCreateKeyboardEvent(source, _VK_RETURN, True)
-        CGEventPost(kCGAnnotatedSessionEventTap, e_dn)
+        CGEventPost(kCGSessionEventTap, e_dn)
         e_up = CGEventCreateKeyboardEvent(source, _VK_RETURN, False)
-        CGEventPost(kCGAnnotatedSessionEventTap, e_up)
+        CGEventPost(kCGSessionEventTap, e_up)
 
     def copy_to_clipboard(self, text: str) -> None:
         """Copy text to the macOS clipboard via pbcopy (no paste keystroke)."""
@@ -201,18 +200,18 @@ class CGEventInjector(TextInjector):
             CGEventCreateKeyboardEvent,
             CGEventKeyboardSetUnicodeString,
             CGEventPost,
-            kCGAnnotatedSessionEventTap,
+            kCGSessionEventTap,
         )
 
         source = self._get_source()
         for char in text:
             e_dn = CGEventCreateKeyboardEvent(source, 0, True)
             CGEventKeyboardSetUnicodeString(e_dn, 1, char)
-            CGEventPost(kCGAnnotatedSessionEventTap, e_dn)
+            CGEventPost(kCGSessionEventTap, e_dn)
 
             e_up = CGEventCreateKeyboardEvent(source, 0, False)
             CGEventKeyboardSetUnicodeString(e_up, 1, char)
-            CGEventPost(kCGAnnotatedSessionEventTap, e_up)
+            CGEventPost(kCGSessionEventTap, e_up)
 
             if self._key_delay_s > 0:
                 time.sleep(self._key_delay_s)

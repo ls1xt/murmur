@@ -293,9 +293,11 @@ class PynputHotkeyListener(HotkeyListener):
         bindings: list[HotkeyBinding],
         push_to_talk_debounce_ms: int = 300,
         stop_on_keypress: bool = True,
+        is_injecting: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__()
         self._stop_on_keypress = stop_on_keypress
+        self._is_injecting: Callable[[], bool] = is_injecting or (lambda: False)
         self._bindings: list[_ResolvedBinding] = _resolve_bindings(bindings)
         self._held: set[Key | KeyCode] = set()
         # VK codes of currently-held keys — used as a layout-independent
@@ -522,8 +524,7 @@ class PynputHotkeyListener(HotkeyListener):
         # an active *toggle* recording.  push_to_talk is hold-to-record and
         # stops on key release, so it must not be interrupted by unrelated
         # keypresses.  Enter is excluded so users can press Enter mid-dictation
-        # without stopping the session.  Injected events are already filtered
-        # above (injected=True guard), so only genuine user input reaches here.
+        # without stopping the session.
         #
         # NOTE: pynput's canonical() returns Key.enter.value (KeyCode(vk=36)),
         # not the Key.enter enum member itself, so identity/equality checks
@@ -534,12 +535,17 @@ class PynputHotkeyListener(HotkeyListener):
             not any_binding_matched
             and self._stop_on_keypress
             and self._active_action == "toggle"
+            and not self._is_injecting()
             and canonical not in _MODIFIER_KEYS
             and canonical != Key.enter.value
             and not (isinstance(canonical, KeyCode) and canonical.char in _ENTER_CHARS)
             and self.on_deactivate is not None
         ):
-            logger.debug("stop_on_keypress: stopping recording (key=%r)", canonical)
+            logger.info(
+                "stop_on_keypress: stopping recording (key=%r injected=%r)",
+                canonical,
+                injected,
+            )
             self.on_deactivate()
 
     def _on_release(self, key: Key | KeyCode | None, injected: bool = False) -> None:

@@ -68,6 +68,7 @@ class DictationApp:
         self._running = False
         self._lock = threading.Lock()
         self._inject_lock = threading.Lock()
+        self._injecting = threading.Event()
         self._stop_event = threading.Event()
         self._last_partial: str = ""
         self._clipboard_mode: bool = False  # True when destination == clipboard
@@ -85,7 +86,9 @@ class DictationApp:
         except OSError:
             self._config_mtime = 0.0
 
-        self.hotkey: HotkeyListener = create_hotkey_listener(config.hotkey)
+        self.hotkey: HotkeyListener = create_hotkey_listener(
+            config.hotkey, is_injecting=self._injecting.is_set
+        )
         self.transcriber: Transcriber = create_transcriber(config.transcriber)
         self.injector: TextInjector = create_injector(config.injector)
         self.feedback = AudioFeedback(
@@ -234,7 +237,9 @@ class DictationApp:
         # calling self.hotkey.stop() inline would make the listener thread try
         # to join() itself -> RuntimeError: cannot join current thread.
         old_hotkey = self.hotkey
-        new_hotkey = create_hotkey_listener(new_config.hotkey)
+        new_hotkey = create_hotkey_listener(
+            new_config.hotkey, is_injecting=self._injecting.is_set
+        )
         new_hotkey.set_callbacks(
             on_activate=self.on_activate,
             on_deactivate=self.on_deactivate,
@@ -268,6 +273,7 @@ class DictationApp:
             with self._lock:
                 should_stop = self._recording_active
             if should_stop:
+                logger.info("Recording stopped via toggle hotkey")
                 self.on_deactivate()
                 return
         debounce_s = self.config.hotkey.push_to_talk_debounce_ms / 1000.0
@@ -394,23 +400,27 @@ class DictationApp:
             self._last_partial[:80],
         )
         with self._inject_lock:
-            if text.startswith(self._last_partial):
-                suffix = text[len(self._last_partial) :]
-                if suffix:
-                    logger.info("Injecting delta suffix: %r", suffix[:80])
-                    self._active_injector.inject_raw(suffix)
+            self._injecting.set()
+            try:
+                if text.startswith(self._last_partial):
+                    suffix = text[len(self._last_partial) :]
+                    if suffix:
+                        logger.info("Injecting delta suffix: %r", suffix[:80])
+                        self._active_injector.inject_raw(suffix)
+                    else:
+                        logger.debug("Partial unchanged, no delta to inject")
                 else:
-                    logger.debug("Partial unchanged, no delta to inject")
-            else:
-                logger.info(
-                    "Partial diverged: backspace %d chars, inject %r",
-                    len(self._last_partial),
-                    text[:80],
-                )
-                if self._last_partial:
-                    self._active_injector.inject_backspaces(len(self._last_partial))
-                self._active_injector.inject_raw(text)
-            self._last_partial = text
+                    logger.info(
+                        "Partial diverged: backspace %d chars, inject %r",
+                        len(self._last_partial),
+                        text[:80],
+                    )
+                    if self._last_partial:
+                        self._active_injector.inject_backspaces(len(self._last_partial))
+                    self._active_injector.inject_raw(text)
+                self._last_partial = text
+            finally:
+                self._injecting.clear()
 
     def on_final_transcript(self, text: str) -> None:
         """Called with finalized turn text.
@@ -429,29 +439,33 @@ class DictationApp:
             self._last_partial[:80],
         )
         with self._inject_lock:
-            if self._last_partial:
-                logger.info(
-                    "Backspacing %d partial chars before final inject",
-                    len(self._last_partial),
-                )
-                self._active_injector.inject_backspaces(len(self._last_partial))
-                self._last_partial = ""
-            if not text.strip():
-                logger.info("Final text was empty/whitespace, skipping")
-                return
-            if self._clipboard_mode:
-                logger.info("Clipboard mode: buffering turn %r", text[:80])
-                self._clipboard_buffer.append(text)
-                return
-            logger.info("Injecting final: %s", text)
+            self._injecting.set()
             try:
-                self._active_injector.inject(text)
-            except TmuxUnavailableError:
-                logger.warning("tmux pane unavailable; falling back to clipboard")
-                self.injector.copy_to_clipboard(text)
-                self.notifier.error("tmux unavailable — text copied to clipboard")
-            except Exception as e:
-                logger.error("Text injection failed: %s", e)
+                if self._last_partial:
+                    logger.info(
+                        "Backspacing %d partial chars before final inject",
+                        len(self._last_partial),
+                    )
+                    self._active_injector.inject_backspaces(len(self._last_partial))
+                    self._last_partial = ""
+                if not text.strip():
+                    logger.info("Final text was empty/whitespace, skipping")
+                    return
+                if self._clipboard_mode:
+                    logger.info("Clipboard mode: buffering turn %r", text[:80])
+                    self._clipboard_buffer.append(text)
+                    return
+                logger.info("Injecting final: %s", text)
+                try:
+                    self._active_injector.inject(text)
+                except TmuxUnavailableError:
+                    logger.warning("tmux pane unavailable; falling back to clipboard")
+                    self.injector.copy_to_clipboard(text)
+                    self.notifier.error("tmux unavailable — text copied to clipboard")
+                except Exception as e:
+                    logger.error("Text injection failed: %s", e)
+            finally:
+                self._injecting.clear()
 
     def on_transcriber_error(self, error: Exception) -> None:
         """Called when the transcriber encounters an error."""

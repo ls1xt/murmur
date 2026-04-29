@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 
 from murmur.config import HotkeyConfig
 from murmur.hotkey.base import HotkeyListener
 
 
-def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
+def create_hotkey_listener(
+    config: HotkeyConfig,
+    is_injecting: Callable[[], bool] | None = None,
+) -> HotkeyListener:
     """Create a hotkey listener backend based on config."""
     match config.backend:
         case "evdev":
@@ -27,6 +31,7 @@ def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
                 bindings=config.bindings,
                 push_to_talk_debounce_ms=config.push_to_talk_debounce_ms,
                 stop_on_keypress=config.stop_on_keypress,
+                is_injecting=is_injecting,
             )
         case "auto":
             if sys.platform == "linux":
@@ -45,6 +50,7 @@ def create_hotkey_listener(config: HotkeyConfig) -> HotkeyListener:
                     bindings=config.bindings,
                     push_to_talk_debounce_ms=config.push_to_talk_debounce_ms,
                     stop_on_keypress=config.stop_on_keypress,
+                    is_injecting=is_injecting,
                 )
             raise RuntimeError(f"No hotkey backend available for {sys.platform}")
         case _:
