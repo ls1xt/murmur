@@ -36,6 +36,8 @@ from murmur.transcriber.base import Transcriber
 
 logger = logging.getLogger(__name__)
 
+MAX_RECORDING_SECONDS = 180.0  # auto-stop recording after 3 minutes
+
 _session_var: contextvars.ContextVar[int] = contextvars.ContextVar(
     "murmur_session", default=0
 )
@@ -79,6 +81,7 @@ class DictationApp:
         )
         self._last_deactivate_time: float = 0.0  # monotonic time of last deactivation
         self._recording_start_time: float = 0.0  # monotonic time of last activation
+        self._max_duration_timer: threading.Timer | None = None
 
         # Config hot-reload: track mtime so we can reload on next activation
         try:
@@ -306,12 +309,31 @@ class DictationApp:
             binding.destination,
             lang or self.config.transcriber.language,
         )
+        self._start_max_duration_timer(self._session_id)
         self.feedback.play_start()
         self.notifier.info("Recording started")
         self.tray.set_state("recording")
         threading.Thread(
             target=self.transcriber.start, args=(lang,), daemon=True
         ).start()
+
+    def _start_max_duration_timer(self, session_id: int) -> None:
+        """Arm a timer that stops the given session after MAX_RECORDING_SECONDS."""
+
+        def _expire() -> None:
+            if self._session_id != session_id:
+                return
+            logger.info(
+                "Max recording duration (%.0fs) reached, stopping",
+                MAX_RECORDING_SECONDS,
+            )
+            self.notifier.info("Recording stopped (3 minute limit)")
+            self.on_deactivate()
+
+        timer = threading.Timer(MAX_RECORDING_SECONDS, _expire)
+        timer.daemon = True
+        self._max_duration_timer = timer
+        timer.start()
 
     def on_deactivate(self) -> None:
         """Called when the hotkey is deactivated (stop recording)."""
@@ -337,6 +359,9 @@ class DictationApp:
                     return
             self._recording_active = False
             self._last_deactivate_time = time.monotonic()
+            if self._max_duration_timer is not None:
+                self._max_duration_timer.cancel()
+                self._max_duration_timer = None
         logger.info("Recording stopped")
         self.feedback.play_stop()
         self.notifier.info("Recording stopped")
